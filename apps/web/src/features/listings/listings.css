@@ -1,0 +1,15 @@
+.listing-history{display:grid;gap:var(--space-3)}
+.listing-history article{border-top:2px solid var(--color-text);background:var(--color-surface)}
+.listing-history article header,.listing-history-row{display:grid;grid-template-columns:minmax(320px,1fr) 100px 120px 120px 150px;align-items:center;gap:var(--space-3);padding:var(--space-3) var(--space-4);border-bottom:var(--border-width) solid var(--color-border);font:var(--font-size-xs) var(--font-mono)}
+.listing-history article header{grid-template-columns:170px 1fr 90px;background:var(--color-workspace-header)}
+.listing-history-columns{display:grid;grid-template-columns:minmax(320px,1fr) 100px 120px 120px 150px;gap:var(--space-3);padding:var(--space-2) var(--space-4);color:var(--color-text-muted);background:var(--color-workspace-header);font:var(--font-size-xs) var(--font-mono)}
+.listing-history-row span:nth-child(2){color:var(--color-positive)}
+.listing-history-row span:last-child{overflow:hidden;color:var(--color-text-muted);text-overflow:ellipsis;white-space:nowrap}
+.listing-item-asset{display:flex;align-items:center;gap:var(--space-2);min-width:0;color:var(--color-text)}
+.listing-item-asset>span:last-child{display:grid;min-width:0;gap:2px}
+.listing-item-asset strong{overflow:hidden;font:600 var(--font-size-sm) var(--font-sans);text-overflow:ellipsis;white-space:nowrap}
+.listing-item-asset small{overflow:hidden;color:var(--color-text-muted);font:var(--font-size-xs) var(--font-mono);text-overflow:ellipsis;white-space:nowrap}
+.listing-history-thumb{display:grid;width:54px;height:40px;place-items:center;flex:0 0 auto;border:var(--border-width) solid var(--color-border);background:var(--color-surface-subtle)}
+.listing-history-thumb img{width:100%;height:100%;object-fit:contain}
+.listing-history-row .is-sold{color:var(--color-positive)}
+@media(max-width:900px){.listing-history article header,.listing-history-row{grid-template-columns:minmax(250px,1fr) 82px 100px 100px}.listing-history article header>*:last-child,.listing-history-row>code{display:none}}

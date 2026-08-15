@@ -174,6 +174,54 @@ Steam 在售档位是竞争挂单，不是保证收入。该曲线只在详情�
 
 深度不足时只计算实际可见数量。后续点位为 `NULL`，不得外推、填零或使用旧快照冒充实时数据。
 
+### 6.4 手续费策略与版本
+
+手续费由领域策略计算，不散落在平台 adapter 或通用 `pricing.py` 常量中：
+
+```text
+base = ToValidMarketPrice(gross, wallet_market_minimum, wallet_currency_increment)
+steam_fee = ToValidMarketPrice(floor(gross * steam_rate), wallet_market_minimum, wallet_currency_increment)
+publisher_fee = ToValidMarketPrice(floor(gross * publisher_rate), wallet_market_minimum, wallet_currency_increment)
+buyer_pays = base + steam_fee + publisher_fee
+seller_proceeds = base
+```
+
+- 计算顺序固定为：以卖家实收基础价计算两项手续费，买家支付价为基础价加两项手续费；Steam `sellitem.price` 传卖家实收基础价。
+- Steam/CNY/CS2 规则为 `steam_rate=5%`、`publisher_rate=10%`，当前钱包元数据的最低市场价为 5 分、价格增量为 1 分。因此卖家实收 34 分时，买家支付价为 44 分。
+- 费率、最低市场价和价格增量按整数规则配置，禁止浮点金额；钱包元数据变化时必须更新策略版本。
+- 规则按 `(appid, currency)` 选择；未找到规则时返回 `UnsupportedFeePolicy`。
+- 每个快照和价格曲线点保存 `fee_policy_version`，保证历史结果可复核。
+
+领域文件拆分为：
+
+```text
+domain/money/errors.py
+domain/pricing/fee_policy.py
+domain/pricing/fee_calculator.py
+domain/pricing/errors.py
+domain/scan/errors.py
+domain/listing/errors.py
+```
+
+不创建跨领域的 `domain/errors.py` 杂物箱。
+
+### 6.5 推荐挂价策略
+
+推荐挂价是可测试的纯函数：
+
+```text
+recommend_listing_price(
+    lowest_ask, price_tick, fee_policy,
+    requested_qty, ask_levels, min_price, daily_volume,
+) -> ListingPriceEstimate
+```
+
+`ask_levels` 是完整且按价格升序的 Steam 在售档位，不是预先计算的数量；函数内部计算 `queue_ahead`。首版策略：目标买家支付价为 `lowest_ask - price_tick`；从目标价向下搜索手续费可逆的可达价格，最多向下搜索 3 分，否则返回 `UnreachablePrice`。价格低于 `min_price` 返回 `BelowMinimumPrice`，不静默抬价。`queue_ahead` 统计价格小于等于推荐价的现有挂单，同价按最后挂出保守计入。`eta_estimate = (queue_ahead + requested_qty) / daily_volume`，日成交量为 0 或缺失时为 `null`。
+
+返回值至少包含 `recommended_price`、`gross_proceeds`、`fees`、`seller_proceeds`、`queue_ahead`、`eta_estimate`、`confidence`。置信度为 `high/medium/low`，反映盘口完整性和成交量可用性。
+
+`UnreachablePrice` 或 `BelowMinimumPrice` 不使候选行情失败；结果保留有效 BUFF/Steam 价格和曲线，并设置 `recommendation_unavailable`，推荐相关字段为 `NULL`。
+
 ## 7. 技术栈
 
 ### 7.1 前端
@@ -216,7 +264,10 @@ routes -> application -> domain
 app startup -> bootstrap/composition root -> concrete implementations
 ```
 
-- `application` 定义 `MarketGateway`、`InventoryGateway`、`ListingGateway`、`ScanJobRepository`、`CredentialStore` 等端口。
+- 扫描首版由 `application/scan/ports.py` 定义 `CandidateSource`、`NameIdResolver`、`MarketDataGateway`、`ScanJobRepository`、`ScanEventRepository`。
+- `application/scan/ports.py` 同时定义 `ScanPersistenceUnitOfWork`，提供 `persist_result_and_event(...)` 原子操作：更新任务状态、写入 snapshot/result/curve、分配 sequence、写入 event 必须在同一数据库事务提交。
+- `NameIdResolver` 是扫描前置能力；候选无法解析 Steam `item_nameid` 时写入 `candidate.rejected`，原因码固定为 `STEAM_NAMEID_UNRESOLVED`，不使整项任务失败。
+- `application/scan/service.py` 独占任务生命周期、候选遍历、并发、取消、退避事件和结果编排；首版不创建 `application/market/service.py`，避免双重编排。
 - `infrastructure` 实现端口，可依赖 domain 值对象和 application 契约。
 - `application` 禁止 import `infrastructure`。
 - `bootstrap/container.py` 是唯一 composition root。
@@ -240,6 +291,28 @@ apps/api/skinflow_api/
   domain/{money,pricing,scan,portfolio,listing}
   infrastructure/{database,credentials,http,platforms}
   bootstrap/container.py
+```
+
+行情领域模型独立于扫描：
+
+```text
+domain/market/snapshot.py
+domain/market/tiers.py
+```
+
+`scan` 只负责任务和结果编排，不把行情快照类型永久绑定到扫描模型。
+
+扫描 feature 固定按职责分区，不使用扁平目录：
+
+```text
+features/scan/
+  api/{scanApi.ts,scanEvents.ts}
+  components/{ScanToolbar,ScanSummary,ScanResultTable,ScanResultRow,ScanResultDetails}
+  hooks/{useScanEvents.ts}
+  model/{types.ts,formatters.ts}
+  pages/{ScanPage.tsx}
+  scan.css
+  index.ts
 ```
 
 前端依赖方向为 `app -> features -> shared`。Feature 只能通过公共入口协作，`shared` 禁止引用 feature。后端 route 不写 SQL，repository 不计算比例，platform parser 与 transport 分文件，DTO 与 domain model 分离。
@@ -274,26 +347,29 @@ result.created
 volume.pending
 volume.updated
 upstream.rate_limited
+upstream.backoff_started
+upstream.backoff_completed
 job.cancelling
 job.cancelled
 job.succeeded
 job.failed
 ```
 
-- 每个任务的 `sequence` 严格单调递增。
+- 每个任务的 `sequence` 严格单调递增；每个事件 payload 必须包含 `schema_version=1`、`job_id`、`sequence`，历史重放按版本解析。
 - `UNIQUE(job_id, sequence)` 由数据库保证。
 - SSE `id` 等于 sequence。
 - 前端优先使用 `Last-Event-ID`，补偿接口支持 `?after=`。
 - 结果、任务状态与对应事件必须在同一事务提交。
 - 完成、失败、取消、限流、退避和阶段切换事件都持久化。
 - 终态事件只能写一次；任务结束后仍可重放全部历史事件。
+- 退避事件 payload 至少包含 `platform`、`reason_code`、`retry_after_seconds`、`attempt`。
 
 ## 12. 平台适配器与统一错误
 
 业务层不得解析平台响应文本。Adapter 将底层异常转换为稳定的结构化错误。
 
-- Domain：`InvalidMoney`、`InvalidListing`、`InvalidStateTransition`
-- Application：`RateLimited`、`SessionExpired`、`AuthenticationRequired`、`UpstreamUnavailable`、`MalformedUpstreamResponse`、`Conflict`、`UnsupportedCapability`
+- Domain：`money/errors.py` 的 `InvalidMoney`；`pricing/errors.py` 的 `UnsupportedFeePolicy`、`UnreachablePrice`；`scan/errors.py` 的 `InvalidStateTransition`；`listing/errors.py` 的 `InvalidListing`
+- Application：`RateLimited`、`SessionExpired`、`AuthenticationRequired`、`UpstreamUnavailable`、`MalformedUpstreamResponse`、`Conflict`、`UnsupportedCapability`、`UnsupportedCurrency`
 - Infrastructure：HTTP、解析、SQLite、密钥环原始错误，仅在 adapter 内部存在
 
 原始平台响应只能进入脱敏、短期诊断日志，不进入业务表或前端状态。
@@ -325,16 +401,20 @@ PRAGMA busy_timeout = 5000;
 - 比例统一存 ppm 整数，`1.0 = 1,000,000`。
 - ID 使用 UUID 字符串。
 - 使用版本化 migration，禁止启动时临时 ALTER。
+- 首版只支持 `Steam/CS2(appid=730)/CNY(currency=23)`；适配器或 gateway 发现其他币种返回 `UnsupportedCurrency`，不得继续归一化或计算。
+- `market_snapshot` 至少保存 `csqaq_observed_at`、`buff_observed_at`、`steam_observed_at`、`daily_volume_observed_at`，并保存 `fee_policy_version`。
+- 结果 DTO 暴露数据年龄和完整性状态；不同平台抓取时间不合并成一个模糊的“行情时间”。
 
 ### 14.1 扫描核心约束
 
-- `scan_job` 包含状态、来源、固定目标数量 10、结果数量、过滤条件、事件序号、失败安全信息和乐观锁版本。
+- `scan_job` 包含状态、来源、`candidate_limit`（客户端请求的候选数量上限）、`depth_limit_per_candidate=10`（服务端固定）、结果数量、过滤条件、事件序号、失败安全信息和乐观锁版本。
 - 部分唯一索引保证只有一个活跃扫描任务。
 - `scan_event(job_id, sequence)` 唯一。
 - `market_snapshot` 保存归一化的 BUFF ask、Steam bid、Steam ask 档位和各自抓取时间。
 - `market_tier(snapshot_id, side, position)` 为主键。
 - `scan_result.snapshot_id` 非空。
-- 复合外键 `(snapshot_id, job_id, market_hash_name)` 保证结果只能引用同任务、同饰品快照。
+- `market_snapshot` 必须有 `UNIQUE(id, job_id, market_hash_name)`，以满足 SQLite 合法复合外键。
+- 复合外键 `(snapshot_id, job_id, market_hash_name)` 保证结果只能引用同任务、同饰品快照；migration 与 repository 测试必须验证该唯一约束和外键行为。
 - `price_curve_point(snapshot_id, quantity)` 保存 1 至 10 件三条曲线，深度不足字段为 NULL。
 
 ### 14.2 账本
@@ -426,7 +506,22 @@ PATCH  /api/settings
 GET    /api/platform-health
 ```
 
-扫描目标数量固定为 10，不允许客户端修改。DTO 使用稳定字段和枚举，不直接暴露数据库 row 或 domain object。
+每个候选的深度上限固定为 10，不允许客户端修改；任务候选数量由 `candidate_limit` 决定。DTO 使用稳定字段和枚举，不直接暴露数据库 row 或 domain object。
+
+扫描请求 DTO：
+
+```text
+source_mode: csqaq | manual | hybrid
+manual_names: string[]
+candidate_limit: positive integer
+depth_limit_per_candidate: 10  # 服务端固定，客户端不可修改
+```
+
+`candidate_limit` 表示候选数量；`depth_limit_per_candidate=10` 表示每个候选最多分析 10 件，二者不可混淆。
+
+请求上限：`candidate_limit` 最大 200，`manual_names` 最大 200 条，单个 `market_hash_name` 最大 200 个字符。空字符串和非法名称被拒绝；名称按 Unicode 规范化后去重，保留首次出现顺序。
+
+扫描并发契约：每个平台独立 semaphore；首版默认 csqaq=2、BUFF=2、Steam=4；单请求连接/读取超时均为 15 秒。429 使用指数退避 `min(2^attempt, 60)` 秒并尊重 `Retry-After`。取消时通过共享 cancellation token 终止尚未发出的请求，已返回数据照常持久化并推送，任务最终进入 `cancelled`。
 
 统一错误响应：
 

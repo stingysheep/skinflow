@@ -1,0 +1,69 @@
+:root {
+  color-scheme: light;
+
+  --font-sans: "IBM Plex Sans", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
+  --font-size-xs: 13px;
+  --font-size-sm: 14px;
+  --font-size-md: 16px;
+  --font-size-lg: 18px;
+  --font-size-title: 26px;
+  --font-size-display: 30px;
+
+  --color-canvas: #eef1f3;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f6f7f8;
+  --color-surface-selected: #e8f1fb;
+  --color-text: #20262d;
+  --color-text-muted: #737c85;
+  --color-text-faint: #a3abb2;
+  --color-border: #dce1e5;
+  --color-border-strong: #b9c1c8;
+  --color-interactive: #1769d2;
+  --color-interactive-hover: #0f57b4;
+  --color-positive: #19724b;
+  --color-positive-surface: #e6f2eb;
+  --color-warning: #aa6c27;
+  --color-warning-surface: #fbf0e3;
+  --color-danger: #b44945;
+  --color-danger-surface: #fbeceb;
+  --color-focus: #4b8fe8;
+  --color-rail: #202832;
+  --color-rail-border: #1f2730;
+  --color-rail-surface: #f4f6f7;
+  --color-rail-text: #c0c9d0;
+  --color-rail-active: #334250;
+  --color-rail-positive: #8fd1ad;
+  --color-rail-danger: #f0a39f;
+  --color-workspace-strip: #f0f3f5;
+  --color-workspace-header: #f7f8f9;
+  --color-workspace-empty: #fbfcfc;
+  --color-depth-track: #dfe4e7;
+  --color-depth-fill: #6f95a5;
+  --color-chart-grid: #e4e8eb;
+  --color-overlay: rgb(23 32 42 / 35%);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --border-width: 1px;
+  --sidebar-width: 132px;
+  --app-min-width: 1100px;
+  --content-max-width: 1920px;
+  --control-height: 38px;
+  --control-height-compact: 32px;
+  --criteria-bar-min-height: 54px;
+  --price-field-width: 76px;
+  --volume-field-width: 70px;
+  --opacity-disabled: 0.62;
+  --transition-fast: 160ms ease;
+  --shadow-dialog: 0 16px 40px rgb(23 32 42 / 18%);
+  --z-modal: 20;
+}

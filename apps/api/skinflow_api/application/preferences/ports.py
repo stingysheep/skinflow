@@ -1,0 +1,13 @@
+from __future__ import annotations
+
+from typing import Any, Protocol
+
+
+class PreferencesStore(Protocol):
+    def all(self) -> dict[str, Any]: ...
+
+    def get(self, key: str) -> tuple[bool, Any]: ...
+
+    def set(self, key: str, value: Any) -> None: ...
+
+    def close(self) -> None: ...

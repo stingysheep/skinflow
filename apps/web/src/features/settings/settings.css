@@ -1,0 +1,3 @@
+.settings-session{display:flex!important;align-items:center;justify-content:space-between;gap:var(--space-4)}
+.settings-session>div{display:grid;gap:var(--space-1)}
+.settings-success{color:var(--color-positive);font-size:var(--font-size-xs)}

@@ -1,0 +1,122 @@
+import sqlite3
+from collections import deque
+from pathlib import Path
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from skinflow_api.application.inventory.errors import (
+    InventoryRateLimited,
+    InventoryUnavailable,
+    SteamSessionExpired,
+)
+from skinflow_api.application.inventory.service import InventoryService
+from skinflow_api.application.scan.upstream_errors import RateLimited, UpstreamUnavailable
+from skinflow_api.infrastructure.database.inventory import SqliteInventoryRepository
+from skinflow_api.infrastructure.platforms.steam.inventory import SteamInventoryAdapter
+from skinflow_api.infrastructure.platforms.steam.session import (
+    InMemorySteamSession,
+    SteamCredentials,
+)
+from skinflow_api.routes.errors import install_error_handlers
+
+
+class SequenceClient:
+    def __init__(self, responses: list[dict | Exception]) -> None:
+        self.responses = deque(responses)
+        self.calls = 0
+
+    def request_json(self, *_args, **_kwargs) -> dict:
+        self.calls += 1
+        response = self.responses.popleft()
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+
+def active_session() -> InMemorySteamSession:
+    session = InMemorySteamSession()
+    session.set_credentials(SteamCredentials("76561198000000000", "secret", "csrf"))
+    return session
+
+
+def empty_page() -> dict:
+    return {"success": 1, "assets": [], "descriptions": [], "more_items": 0}
+
+
+def test_inventory_retries_rate_limit_then_reads_both_contexts() -> None:
+    client = SequenceClient([RateLimited(), empty_page(), empty_page()])
+    delays: list[float] = []
+    adapter = SteamInventoryAdapter(active_session(), client, sleep=delays.append)
+
+    assert adapter.fetch_inventory() == ()
+    assert client.calls == 3
+    assert delays == [2.0]
+
+
+def test_inventory_exhausted_rate_limit_has_structured_retry_after() -> None:
+    client = SequenceClient([RateLimited(retry_after_seconds=5) for _ in range(4)])
+    delays: list[float] = []
+    adapter = SteamInventoryAdapter(active_session(), client, sleep=delays.append)
+
+    with pytest.raises(InventoryRateLimited) as caught:
+        adapter.fetch_inventory()
+
+    assert caught.value.retry_after_seconds == 5
+    assert client.calls == 4
+    assert delays == [5.0, 5.0, 5.0]
+
+
+def test_inventory_marks_unauthorized_session_expired() -> None:
+    session = active_session()
+    client = SequenceClient([UpstreamUnavailable("unauthorized", status_code=401)])
+    adapter = SteamInventoryAdapter(session, client, sleep=lambda _delay: None)
+
+    with pytest.raises(SteamSessionExpired):
+        adapter.fetch_inventory()
+
+    assert session.status().status == "expired"
+
+
+def test_failed_refresh_is_recorded_without_removing_existing_assets(tmp_path: Path) -> None:
+    database = tmp_path / "inventory.db"
+    repository = SqliteInventoryRepository(database)
+
+    class FailingGateway:
+        def fetch_inventory(self):
+            raise InventoryUnavailable("Steam 库存服务暂时不可用")
+
+    service = InventoryService(active_session(), FailingGateway(), repository)
+    with pytest.raises(InventoryUnavailable):
+        service.refresh()
+
+    connection = sqlite3.connect(database)
+    row = connection.execute(
+        "SELECT status,failure_code FROM inventory_sync_run ORDER BY observed_at DESC LIMIT 1"
+    ).fetchone()
+    connection.close()
+    assert row == ("failed", "STEAM_INVENTORY_UNAVAILABLE")
+
+
+def test_inventory_rate_limit_api_error_is_retryable() -> None:
+    app = FastAPI()
+
+    @app.get("/limited")
+    def limited() -> None:
+        raise InventoryRateLimited(7)
+
+    install_error_handlers(app)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/limited")
+
+    assert response.status_code == 429
+    assert (
+        response.json()["error"]
+        | {
+            "code": "STEAM_INVENTORY_RATE_LIMITED",
+            "retryable": True,
+            "retry_after_seconds": 7,
+        }
+        == response.json()["error"]
+    )

@@ -1,0 +1,2 @@
+class InvalidListing(ValueError):
+    pass
