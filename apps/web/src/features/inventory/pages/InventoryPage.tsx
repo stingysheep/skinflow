@@ -63,7 +63,8 @@ export function InventoryPage() {
     const normalizedQuery = query.trim().toLocaleLowerCase()
     return groups.filter((group) => {
       const matchesScope = scope === 'all' || (group.held_quantity ?? 0) > 0
-      const matchesFilter = tradeFilter === 'all'
+      const matchesHeldOnly = scope === 'held' && (group.held_quantity ?? 0) > 0
+      const matchesFilter = matchesHeldOnly || tradeFilter === 'all'
         || (tradeFilter === 'tradable' && group.tradable_quantity > 0)
         || (tradeFilter === 'cooldown' && Math.max(0, group.available_quantity - group.tradable_quantity) > 0)
       const matchesQuery = !normalizedQuery || `${group.display_name} ${group.market_hash_name}`

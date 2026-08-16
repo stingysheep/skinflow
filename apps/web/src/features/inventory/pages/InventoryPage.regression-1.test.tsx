@@ -94,4 +94,27 @@ describe('InventoryPage listing preview regression', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '预览挂单' })).toBeDisabled())
     expect(screen.queryByText('所选资产已失效')).not.toBeInTheDocument()
   })
+
+  it('shows recorded holdings even when Steam no longer returns the asset', async () => {
+    mockedGetInventory.mockResolvedValue({
+      status: 'ready',
+      items: [],
+      groups: [{
+        market_hash_name: 'AK-47 | Held',
+        display_name: 'AK-47 | 已记录持仓',
+        image_url: '',
+        total_quantity: 0,
+        available_quantity: 0,
+        marketable_quantity: 0,
+        tradable_quantity: 0,
+        held_quantity: 2,
+        average_cost: 100,
+      }],
+    })
+
+    render(<InventoryPage />)
+    fireEvent.change(screen.getByRole('combobox', { name: '库存范围' }), { target: { value: 'held' } })
+
+    expect(await screen.findByText('AK-47 | 已记录持仓')).toBeInTheDocument()
+  })
 })

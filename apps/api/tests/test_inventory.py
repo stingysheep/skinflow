@@ -13,6 +13,7 @@ from skinflow_api.application.scan.models import ScanJob, ScanRequest
 from skinflow_api.domain.market.snapshot import MarketSnapshot
 from skinflow_api.domain.market.tiers import MarketSide, MarketTier
 from skinflow_api.infrastructure.database.inventory import SqliteInventoryRepository
+from skinflow_api.infrastructure.database.ledger import LedgerRepository
 from skinflow_api.infrastructure.database.sqlite_uow import SqliteScanUnitOfWork
 from skinflow_api.infrastructure.platforms.steam.inventory import parse_inventory_page
 from skinflow_api.infrastructure.platforms.steam.session import (
@@ -112,6 +113,21 @@ def test_inventory_sync_populates_chinese_item_metadata(tmp_path: Path) -> None:
     ).fetchone()
     connection.close()
     assert row == ("AK-47 | 板岩", "image")
+
+
+def test_grouped_inventory_keeps_held_items_missing_from_current_steam_inventory(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "held-inventory.db"
+    repository = SqliteInventoryRepository(database)
+    repository.sync((asset("available"),))
+    LedgerRepository(database).create_purchase("AK-47 | Held", 2, 100, 1_000, None, False)
+
+    groups = repository.list_grouped_assets()
+
+    held = next(group for group in groups if group["market_hash_name"] == "AK-47 | Held")
+    assert held["held_quantity"] == 2
+    assert held["available_quantity"] == 0
 
 
 def test_inventory_group_details_returns_recent_steam_book_and_trend(tmp_path: Path) -> None:
