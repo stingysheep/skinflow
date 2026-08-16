@@ -114,8 +114,41 @@ describe('InventoryPage listing preview regression', () => {
 
     render(<InventoryPage />)
     fireEvent.change(screen.getByRole('combobox', { name: '库存范围' }), { target: { value: 'held' } })
+    fireEvent.change(screen.getByRole('combobox', { name: '交易状态' }), { target: { value: 'all' } })
 
     expect(await screen.findByText('AK-47 | 已记录持仓')).toBeInTheDocument()
+  })
+
+  it('applies trade status filtering inside recorded holdings', async () => {
+    mockedGetInventory.mockResolvedValue({
+      status: 'ready',
+      items: [],
+      groups: [
+        {
+          market_hash_name: 'P90 | Tradable', display_name: 'P90 | 可交易', image_url: '',
+          total_quantity: 23, available_quantity: 23, marketable_quantity: 23,
+          tradable_quantity: 23, held_quantity: 23,
+        },
+        {
+          market_hash_name: 'Sawed-Off | Cooldown', display_name: '截短霰弹枪 | 冷却中', image_url: '',
+          total_quantity: 19, available_quantity: 19, marketable_quantity: 0,
+          tradable_quantity: 0, held_quantity: 19,
+          cooldown_batches: [{ tradable_after: Date.now() + 60_000, quantity: 19 }],
+        },
+      ],
+    })
+
+    render(<InventoryPage />)
+    await screen.findByText('P90 | 可交易')
+    fireEvent.change(screen.getByRole('combobox', { name: '库存范围' }), { target: { value: 'held' } })
+    fireEvent.change(screen.getByRole('combobox', { name: '交易状态' }), { target: { value: 'cooldown' } })
+
+    expect(screen.queryByText('P90 | 可交易')).not.toBeInTheDocument()
+    expect(screen.getByText('截短霰弹枪 | 冷却中')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('combobox', { name: '交易状态' }), { target: { value: 'tradable' } })
+    expect(screen.getByText('P90 | 可交易')).toBeInTheDocument()
+    expect(screen.queryByText('截短霰弹枪 | 冷却中')).not.toBeInTheDocument()
   })
 
   it('synchronizes Steam inventory periodically so trade status changes appear', async () => {

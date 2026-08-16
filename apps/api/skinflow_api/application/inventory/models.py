@@ -31,6 +31,7 @@ class InventoryAsset:
     tradable: bool
     hold_text: str | None = None
     wear_text: str | None = None
+    tradable_after: int | None = None
 
     def __post_init__(self) -> None:
         if self.platform != "steam" or self.appid != 730:

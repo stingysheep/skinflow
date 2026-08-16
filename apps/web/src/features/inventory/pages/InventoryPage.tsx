@@ -5,6 +5,7 @@ import { ApiError } from '../../../shared/api/client'
 import { createListingPreview, getInventory, getInventoryGroupDetails, refreshInventory } from '../api/inventoryApi'
 import { InventoryGroupDetails } from '../components/InventoryGroupDetails'
 import { ListingPreviewDialog } from '../components/ListingPreviewDialog'
+import { TradeAvailability } from '../components/TradeAvailability'
 import { usePersistentState } from '../../../shared/hooks/usePersistentState'
 import {
   type InventoryGroup,
@@ -61,8 +62,7 @@ export function InventoryPage() {
     const normalizedQuery = query.trim().toLocaleLowerCase()
     return groups.filter((group) => {
       const matchesScope = scope === 'all' || (group.held_quantity ?? 0) > 0
-      const matchesHeldOnly = scope === 'held' && (group.held_quantity ?? 0) > 0
-      const matchesFilter = matchesHeldOnly || tradeFilter === 'all'
+      const matchesFilter = tradeFilter === 'all'
         || (tradeFilter === 'tradable' && group.tradable_quantity > 0)
         || (tradeFilter === 'cooldown' && Math.max(0, group.available_quantity - group.tradable_quantity) > 0)
       const matchesQuery = !normalizedQuery || `${group.display_name} ${group.market_hash_name}`
@@ -192,7 +192,7 @@ export function InventoryPage() {
       {error ? <FeedbackState kind="error" title="库存读取失败" description={error} /> : null}
       {!error && loading ? <div className="module-empty">正在读取库存…</div> : null}
       {!error && !loading && data?.status === 'session_required' ? <FeedbackState kind="empty" title="Steam 会话未连接" description="请从设置页连接 Steam。行情扫描仍然可以匿名使用。" /> : null}
-      {!error && !loading && data?.status === 'ready' && visibleGroups.length ? <InventoryGrid groups={visibleGroups} quantities={quantities} expandedName={expandedName} details={groupDetails} detailLoading={detailLoading} detailErrors={detailErrors} tradeFilter={tradeFilter} onExpand={toggleDetails} onQuantityChange={setQuantity} /> : null}
+      {!error && !loading && data?.status === 'ready' && visibleGroups.length ? <InventoryGrid groups={visibleGroups} quantities={quantities} expandedName={expandedName} details={groupDetails} detailLoading={detailLoading} detailErrors={detailErrors} onExpand={toggleDetails} onQuantityChange={setQuantity} /> : null}
       {!error && !loading && data?.status === 'ready' && !visibleGroups.length ? <FeedbackState kind="empty" title="没有匹配的物品" description="尝试切换筛选或清空搜索条件。" /> : null}
       <ListingPreviewDialog preview={preview} open={previewOpen} onOpenChange={setPreviewOpen} onSubmitted={load} />
     </div>
@@ -221,27 +221,34 @@ function normalizeGroups(data: InventoryResponse | null): InventoryGroup[] {
   return [...grouped.values()]
 }
 
-function InventoryGrid({ groups, quantities, expandedName, details, detailLoading, detailErrors, tradeFilter, onExpand, onQuantityChange }: {
+function InventoryGrid({ groups, quantities, expandedName, details, detailLoading, detailErrors, onExpand, onQuantityChange }: {
   groups: InventoryGroup[]
   quantities: Map<string, number>
   expandedName: string | null
   details: Record<string, InventoryGroupDetailsModel | null>
   detailLoading: string | null
   detailErrors: Record<string, string>
-  tradeFilter: InventoryTradeFilter
   onExpand: (name: string) => void
   onQuantityChange: (name: string, quantity: number) => void
 }) {
+  const hasCooldown = groups.some((group) => group.available_quantity > group.tradable_quantity)
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!hasCooldown) return
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [hasCooldown])
+
   return (
       <div className="inventory-grid inventory-group-grid">
-      <div className="inventory-grid-head"><span>选择</span><span>物品组</span><span>交易状态</span><span>移动均价</span><span>出售数量</span></div>
+      <div className="inventory-grid-head"><span>选择</span><span>物品组</span><span>可交易</span><span>移动均价</span><span>出售数量</span></div>
       {groups.map((group) => {
         const quantity = quantities.get(group.market_hash_name) ?? 0
         const max = group.tradable_quantity
         return <Fragment key={group.market_hash_name}><div className={quantity ? 'inventory-row is-selected' : 'inventory-row'} role="button" tabIndex={0} aria-expanded={expandedName === group.market_hash_name} onClick={() => onExpand(group.market_hash_name)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onExpand(group.market_hash_name) } }}>
           <input type="checkbox" checked={quantity > 0} disabled={!max} aria-label={`选择 ${group.display_name}`} onClick={(event) => event.stopPropagation()} onChange={() => onQuantityChange(group.market_hash_name, quantity ? 0 : 1)} />
           <span className="inventory-item"><span className="inventory-thumb">{group.image_url ? <img src={group.image_url} alt="" /> : null}</span><strong>{group.display_name}{group.wear_text ? ` · ${group.wear_text}` : ''}<small>{group.market_hash_name}</small></strong></span>
-          <span className="group-availability"><b>{tradeFilter === 'cooldown' ? Math.max(0, group.available_quantity - group.tradable_quantity) : group.tradable_quantity}</b><small>/ {group.available_quantity} 件</small></span>
+          <TradeAvailability group={group} now={now} />
           <code>{money(group.average_cost)}</code>
           <span className="quantity-stepper" onClick={(event) => event.stopPropagation()}><button type="button" onClick={() => onQuantityChange(group.market_hash_name, Math.max(0, quantity - 1))} aria-label={`减少 ${group.display_name}`}>−</button><output>{quantity}</output><button type="button" onClick={() => onQuantityChange(group.market_hash_name, Math.min(max, quantity + 1))} aria-label={`增加 ${group.display_name}`}>+</button></span>
         </div>{expandedName === group.market_hash_name ? <div className="inventory-detail-row"><InventoryGroupDetails details={details[group.market_hash_name] ?? null} loading={detailLoading === group.market_hash_name} error={detailErrors[group.market_hash_name] || null} /></div> : null}</Fragment>

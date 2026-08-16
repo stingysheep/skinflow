@@ -35,6 +35,11 @@ export type InventoryGroup = {
   tradable_quantity: number
   average_cost?: number | null
   held_quantity?: number
+  cooldown_batches?: Array<{
+    tradable_after: number | null
+    quantity: number
+    hold_text?: string | null
+  }>
 }
 
 export type InventoryGroupDetails = {

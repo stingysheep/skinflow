@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -15,7 +16,10 @@ from skinflow_api.domain.market.tiers import MarketSide, MarketTier
 from skinflow_api.infrastructure.database.inventory import SqliteInventoryRepository
 from skinflow_api.infrastructure.database.ledger import LedgerRepository
 from skinflow_api.infrastructure.database.sqlite_uow import SqliteScanUnitOfWork
-from skinflow_api.infrastructure.platforms.steam.inventory import parse_inventory_page
+from skinflow_api.infrastructure.platforms.steam.inventory import (
+    _tradable_after,
+    parse_inventory_page,
+)
 from skinflow_api.infrastructure.platforms.steam.session import (
     InMemorySteamSession,
     SteamCredentials,
@@ -31,9 +35,29 @@ class FakeGateway:
         return self._assets
 
 
-def asset(assetid: str = "42", contextid: str = "2") -> InventoryAsset:
+def asset(
+    assetid: str = "42",
+    contextid: str = "2",
+    *,
+    tradable: bool = True,
+    hold_text: str | None = None,
+    tradable_after: int | None = None,
+) -> InventoryAsset:
     return InventoryAsset(
-        "steam", 730, contextid, assetid, "AK-47 | Slate", "AK-47 | Slate", "", "1", "0", True, True
+        "steam",
+        730,
+        contextid,
+        assetid,
+        "AK-47 | Slate",
+        "AK-47 | Slate",
+        "",
+        "1",
+        "0",
+        True,
+        tradable,
+        hold_text,
+        None,
+        tradable_after,
     )
 
 
@@ -81,6 +105,18 @@ def test_inventory_parser_uses_asset_context_instead_of_requested_context() -> N
     )
 
     assert items[0].contextid == "2"
+
+
+def test_inventory_parser_reads_local_trade_hold_timestamp() -> None:
+    local_tz = timezone(timedelta(hours=8))
+    now = datetime(2026, 8, 16, 22, 0, tzinfo=local_tz)
+
+    parsed = _tradable_after(
+        "⇆ 此物品正受交易保护，在8 月 17 日 上午 10:00之前不能被转让",
+        now,
+    )
+
+    assert parsed == int(datetime(2026, 8, 17, 10, 0, tzinfo=local_tz).timestamp() * 1000)
 
 
 def test_inventory_sync_preserves_missing_assets(tmp_path: Path) -> None:
@@ -162,6 +198,26 @@ def test_grouped_inventory_does_not_count_stale_context_identity(tmp_path: Path)
 
     assert group["total_quantity"] == 1
     assert group["available_quantity"] == 1
+
+
+def test_grouped_inventory_aggregates_cooldown_batches(tmp_path: Path) -> None:
+    database = tmp_path / "cooldown-batches.db"
+    repository = SqliteInventoryRepository(database)
+    LedgerRepository(database)
+    repository.sync(
+        (
+            asset("first", "16", tradable=False, tradable_after=1000),
+            asset("second", "16", tradable=False, tradable_after=1000),
+            asset("third", "16", tradable=False, tradable_after=2000),
+        )
+    )
+
+    group = repository.list_grouped_assets()[0]
+
+    assert group["cooldown_batches"] == [
+        {"tradable_after": 1000, "quantity": 2, "hold_text": None},
+        {"tradable_after": 2000, "quantity": 1, "hold_text": None},
+    ]
 
 
 def test_inventory_group_details_returns_recent_steam_book_and_trend(tmp_path: Path) -> None:

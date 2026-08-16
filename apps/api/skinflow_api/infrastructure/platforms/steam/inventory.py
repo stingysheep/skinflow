@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import Callable, Iterable
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
 from skinflow_api.application.inventory.errors import (
@@ -21,6 +22,9 @@ IMAGE_URL = "https://community.cloudflare.steamstatic.com/economy/image/"
 CONTEXT_IDS = ("2", "16")
 MAX_PAGES_PER_CONTEXT = 20
 RETRY_DELAYS_SECONDS = (2.0, 4.0, 8.0)
+TRADE_HOLD_PATTERN = re.compile(
+    r"在\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*(上午|下午)\s*(\d{1,2}):(\d{2})\s*之前"
+)
 
 
 def parse_inventory_page(data: dict, contextid: str) -> tuple[InventoryAsset, ...]:
@@ -53,6 +57,7 @@ def parse_inventory_page(data: dict, contextid: str) -> tuple[InventoryAsset, ..
             or None
         )
         wear_text = _wear_text(description)
+        tradable_after = _tradable_after(hold_text)
         icon_path = str(description.get("icon_url") or "")
         assets.append(
             InventoryAsset(
@@ -69,6 +74,7 @@ def parse_inventory_page(data: dict, contextid: str) -> tuple[InventoryAsset, ..
                 tradable=bool(description.get("tradable")),
                 hold_text=hold_text,
                 wear_text=wear_text,
+                tradable_after=tradable_after,
             )
         )
     return tuple(assets)
@@ -93,6 +99,32 @@ def _wear_text(description: dict) -> str | None:
     return None
 
 
+def _tradable_after(hold_text: str | None, now: datetime | None = None) -> int | None:
+    match = TRADE_HOLD_PATTERN.search(hold_text or "")
+    if match is None:
+        return None
+    current = now or datetime.now().astimezone()
+    month, day, period, raw_hour, minute = match.groups()
+    hour = int(raw_hour) % 12 + (12 if period == "下午" else 0)
+    candidate = datetime(
+        current.year,
+        int(month),
+        int(day),
+        hour,
+        int(minute),
+        tzinfo=current.tzinfo,
+    )
+    if candidate < current - timedelta(days=30):
+        candidate = candidate.replace(year=current.year + 1)
+    return int(candidate.timestamp() * 1000)
+
+
+def _timezone_cookie() -> str:
+    local = datetime.now().astimezone()
+    offset = int((local.utcoffset() or timedelta()).total_seconds())
+    return f"timezoneOffset={offset},0"
+
+
 class SteamInventoryAdapter:
     def __init__(
         self,
@@ -107,17 +139,18 @@ class SteamInventoryAdapter:
 
     def fetch_inventory(self) -> tuple[InventoryAsset, ...]:
         credentials = self._session.credentials()
+        cookie = f"{credentials.cookie_header}; {_timezone_cookie()}"
         # Steam returns an empty successful context 16 response for expired cookies.
         self._request_page(
             f"{COMMUNITY_URL}/actions/GetNotificationCounts",
             credentials.steamid64,
-            credentials.cookie_header,
+            cookie,
             allow_authenticated_bad_request=True,
         )
         assets: dict[tuple[int, str, str], InventoryAsset] = {}
         for contextid in CONTEXT_IDS:
             for item in self._fetch_context(
-                credentials.steamid64, credentials.cookie_header, contextid
+                credentials.steamid64, cookie, contextid
             ):
                 assets[(item.appid, item.contextid, item.assetid)] = item
         return tuple(assets.values())

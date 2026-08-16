@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS inventory_asset (
   tradable INTEGER NOT NULL,
   hold_text TEXT,
   wear_text TEXT,
+  tradable_after INTEGER,
   status TEXT NOT NULL,
   first_seen_at INTEGER NOT NULL,
   last_seen_at INTEGER NOT NULL,
@@ -62,6 +63,10 @@ class SqliteInventoryRepository:
         }
         if "wear_text" not in columns:
             self._connection.execute("ALTER TABLE inventory_asset ADD COLUMN wear_text TEXT")
+        if "tradable_after" not in columns:
+            self._connection.execute(
+                "ALTER TABLE inventory_asset ADD COLUMN tradable_after INTEGER"
+            )
 
     def sync(self, assets: tuple[InventoryAsset, ...]) -> InventoryRefreshResult:
         now = int(time.time() * 1000)
@@ -84,13 +89,14 @@ class SqliteInventoryRepository:
                 self._connection.execute(
                     "INSERT INTO inventory_asset(" 
                     "platform,appid,contextid,assetid,market_hash_name,display_name,image_url," 
-                    "classid,instanceid,marketable,tradable,hold_text,wear_text,status," 
-                    "first_seen_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                    "classid,instanceid,marketable,tradable,hold_text,wear_text,"
+                    "tradable_after,status,first_seen_at,last_seen_at) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
                     "ON CONFLICT(platform,appid,contextid,assetid) DO UPDATE SET "
                     "market_hash_name=excluded.market_hash_name,display_name=excluded.display_name,"
                     "image_url=excluded.image_url,classid=excluded.classid,instanceid=excluded.instanceid,"
                     "marketable=excluded.marketable,tradable=excluded.tradable,hold_text=excluded.hold_text,"
-                    "wear_text=excluded.wear_text,"
+                    "wear_text=excluded.wear_text,tradable_after=excluded.tradable_after,"
                     "status='available',last_seen_at=excluded.last_seen_at",
                     (
                         item.platform,
@@ -106,6 +112,7 @@ class SqliteInventoryRepository:
                         int(item.tradable),
                         item.hold_text,
                         item.wear_text,
+                        item.tradable_after,
                         "available",
                         now,
                         now,
@@ -191,6 +198,25 @@ class SqliteInventoryRepository:
                 "WHERE COALESCE(a.available_quantity,0)>0 OR COALESCE(c.quantity,0)>0 "
                 "ORDER BY localized_name,n.market_hash_name"
             ).fetchall()
+            batch_rows = self._connection.execute(
+                "SELECT market_hash_name,tradable_after,hold_text,COUNT(*) quantity "
+                "FROM inventory_asset WHERE status='available' AND tradable=0 "
+                "GROUP BY market_hash_name,tradable_after,hold_text "
+                "ORDER BY market_hash_name,tradable_after IS NULL,tradable_after"
+            ).fetchall()
+        batches: dict[str, list[dict]] = {}
+        for row in batch_rows:
+            batches.setdefault(row["market_hash_name"], []).append(
+                {
+                    "tradable_after": (
+                        int(row["tradable_after"])
+                        if row["tradable_after"] is not None
+                        else None
+                    ),
+                    "quantity": int(row["quantity"]),
+                    "hold_text": row["hold_text"],
+                }
+            )
         return [
             {
                 **dict(row),
@@ -204,6 +230,7 @@ class SqliteInventoryRepository:
                 ),
                 "held_quantity": int(row["held_quantity"] or 0),
                 "wear_text": row["wear_text"],
+                "cooldown_batches": batches.get(row["market_hash_name"], []),
             }
             for row in rows
         ]
