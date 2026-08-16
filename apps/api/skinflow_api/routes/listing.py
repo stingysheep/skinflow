@@ -2,7 +2,11 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from skinflow_api.application.listing import ListingService
-from skinflow_api.application.listing.models import ListingGroupSelection, ListingSelection
+from skinflow_api.application.listing.models import (
+    MAX_LISTING_PREVIEW_ASSETS,
+    ListingGroupSelection,
+    ListingSelection,
+)
 
 
 class AssetSelection(BaseModel):
@@ -15,13 +19,17 @@ class AssetSelection(BaseModel):
 
 class GroupSelection(BaseModel):
     market_hash_name: str = Field(min_length=1, max_length=200)
-    quantity: int = Field(ge=1, le=100)
+    quantity: int = Field(ge=1, le=MAX_LISTING_PREVIEW_ASSETS)
     buyer_pays: int | None = Field(default=None, ge=1)
 
 
 class PreviewRequest(BaseModel):
-    items: list[AssetSelection] = Field(default_factory=list, max_length=20)
-    groups: list[GroupSelection] = Field(default_factory=list, max_length=20)
+    items: list[AssetSelection] = Field(
+        default_factory=list, max_length=MAX_LISTING_PREVIEW_ASSETS
+    )
+    groups: list[GroupSelection] = Field(
+        default_factory=list, max_length=MAX_LISTING_PREVIEW_ASSETS
+    )
 
 
 class SubmitRequest(BaseModel):

@@ -6,6 +6,8 @@ from skinflow_api.application.inventory.models import InventoryAsset
 from skinflow_api.domain.market.snapshot import MarketSnapshot
 from skinflow_api.domain.market.tiers import MarketTier
 
+MAX_LISTING_PREVIEW_ASSETS = 100
+
 
 @dataclass(frozen=True, slots=True)
 class ListingSelection:

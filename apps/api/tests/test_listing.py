@@ -18,6 +18,7 @@ from skinflow_api.infrastructure.database.inventory import SqliteInventoryReposi
 from skinflow_api.infrastructure.database.ledger import LedgerRepository
 from skinflow_api.infrastructure.database.listing import SqliteListingRepository
 from skinflow_api.infrastructure.database.sqlite_uow import SqliteScanUnitOfWork
+from skinflow_api.routes.listing import PreviewRequest
 
 
 class Gateway:
@@ -259,6 +260,75 @@ def test_grouped_preview_uses_moving_average_and_oldest_tradable_assets(tmp_path
 
     assert [item["assetid"] for item in preview["items"]] == ["older", "newer"]
     assert {item["cost_each"] for item in preview["items"]} == {200}
+
+
+def test_grouped_preview_accepts_up_to_one_hundred_assets(tmp_path: Path) -> None:
+    path = tmp_path / "large-grouped-listing.db"
+    assets = tuple(
+        InventoryAsset(
+            "steam",
+            730,
+            "2",
+            f"asset-{index}",
+            "AK-47 | Slate",
+            "AK-47 | Slate",
+            "",
+            "1",
+            "0",
+            True,
+            True,
+        )
+        for index in range(100)
+    )
+    SqliteInventoryRepository(path).sync(assets)
+    LedgerRepository(path).create_purchase("AK-47 | Slate", 100, 100, 1000, None, False)
+    uow = SqliteScanUnitOfWork(path)
+    snapshot = MarketSnapshot(
+        "AK-47 | Slate",
+        None,
+        None,
+        1000,
+        None,
+        "CNY",
+        730,
+        (MarketTier(MarketSide.STEAM_ASK, 200, 100),),
+        "steam-cs2-cny-v1",
+    )
+    from skinflow_api.application.scan.models import ScanJob, ScanRequest
+
+    job = ScanJob(ScanRequest("manual", 1, ("AK-47 | Slate",)))
+    uow.create_job(job)
+    uow.persist_result_and_event(job, snapshot, payload={"name": "AK-47 | Slate"})
+    repository = SqliteListingRepository(path)
+    service = ListingService(
+        repository, repository, Gateway(ListingGatewayResult(True, False, "1", None))
+    )
+
+    preview = service.create_grouped_preview(
+        (ListingGroupSelection("AK-47 | Slate", 100, 200),)
+    )
+
+    assert len(preview["items"]) == 100
+    with pytest.raises(ValueError, match="between 1 and 100 assets"):
+        service.create_grouped_preview(
+            (ListingGroupSelection("AK-47 | Slate", 101, 200),)
+        )
+
+
+def test_listing_preview_route_accepts_one_hundred_asset_selections() -> None:
+    request = PreviewRequest(
+        items=[
+            {
+                "platform": "steam",
+                "appid": 730,
+                "contextid": "2",
+                "assetid": f"asset-{index}",
+            }
+            for index in range(100)
+        ]
+    )
+
+    assert len(request.items) == 100
 
 
 def test_custom_group_price_updates_all_expanded_assets(tmp_path: Path) -> None:

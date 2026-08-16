@@ -16,7 +16,7 @@ from skinflow_api.domain.pricing import (
     steam_cny_policy,
 )
 
-from .models import ListingGroupSelection, ListingSelection
+from .models import MAX_LISTING_PREVIEW_ASSETS, ListingGroupSelection, ListingSelection
 from .ports import ListingCatalog, ListingGateway, ListingMarketSnapshotProvider, ListingPersistence
 
 
@@ -34,8 +34,10 @@ class ListingService:
         self._market_snapshot_provider = market_snapshot_provider
 
     def create_preview(self, selections: tuple[ListingSelection, ...]) -> dict:
-        if not 1 <= len(selections) <= 20:
-            raise InvalidListing("a preview must contain between 1 and 20 assets")
+        if not 1 <= len(selections) <= MAX_LISTING_PREVIEW_ASSETS:
+            raise InvalidListing(
+                f"a preview must contain between 1 and {MAX_LISTING_PREVIEW_ASSETS} assets"
+            )
         identities = {
             (item.platform, item.appid, item.contextid, item.assetid) for item in selections
         }
@@ -47,8 +49,11 @@ class ListingService:
     def create_grouped_preview(
         self, selections: tuple[ListingGroupSelection, ...]
     ) -> dict:
-        if not 1 <= len(selections) <= 20:
-            raise InvalidListing("a preview must contain between 1 and 20 item groups")
+        if not 1 <= len(selections) <= MAX_LISTING_PREVIEW_ASSETS:
+            raise InvalidListing(
+                "a preview must contain between 1 and "
+                f"{MAX_LISTING_PREVIEW_ASSETS} item groups"
+            )
         names = [item.market_hash_name.strip() for item in selections]
         if any(not name for name in names) or len(set(names)) != len(names):
             raise InvalidListing("duplicate or empty item groups are not allowed")
@@ -56,6 +61,11 @@ class ListingService:
         for item, name in zip(selections, names, strict=True):
             if item.quantity < 1:
                 raise InvalidListing("group quantity must be positive")
+            if len(expanded) + item.quantity > MAX_LISTING_PREVIEW_ASSETS:
+                raise InvalidListing(
+                    "a preview must contain between 1 and "
+                    f"{MAX_LISTING_PREVIEW_ASSETS} assets"
+                )
             normalized = ListingGroupSelection(name, item.quantity, item.buyer_pays)
             contexts = self._catalog.contexts_for_group(normalized)
             if len(contexts) < item.quantity:
