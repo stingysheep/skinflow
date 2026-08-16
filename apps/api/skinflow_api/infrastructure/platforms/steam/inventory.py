@@ -133,7 +133,7 @@ class SteamInventoryAdapter:
             items.extend(page)
             seen.update(item.assetid for item in page)
             next_assetid = data.get("last_assetid")
-            if not data.get("more_items") or not page or not next_assetid:
+            if not data.get("more_items") or not next_assetid:
                 break
             start_assetid = str(next_assetid)
         return items

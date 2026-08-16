@@ -55,6 +55,42 @@ def test_inventory_retries_rate_limit_then_reads_both_contexts() -> None:
     assert delays == [2.0]
 
 
+def test_inventory_continues_pagination_after_page_without_marketable_assets() -> None:
+    client = SequenceClient(
+        [
+            {
+                "success": 1,
+                "assets": [{"assetid": "ignored", "classid": "1", "instanceid": "0"}],
+                "descriptions": [],
+                "more_items": 1,
+                "last_assetid": "100",
+            },
+            {
+                "success": 1,
+                "assets": [{"assetid": "42", "classid": "9", "instanceid": "0"}],
+                "descriptions": [
+                    {
+                        "classid": "9",
+                        "instanceid": "0",
+                        "market_hash_name": "AK-47 | Slate",
+                        "name": "AK-47 | Slate",
+                        "marketable": 1,
+                        "tradable": 1,
+                    }
+                ],
+                "more_items": 0,
+            },
+            empty_page(),
+        ]
+    )
+    adapter = SteamInventoryAdapter(active_session(), client, sleep=lambda _delay: None)
+
+    assets = adapter.fetch_inventory()
+
+    assert [item.assetid for item in assets] == ["42"]
+    assert client.calls == 3
+
+
 def test_inventory_exhausted_rate_limit_has_structured_retry_after() -> None:
     client = SequenceClient([RateLimited(retry_after_seconds=5) for _ in range(4)])
     delays: list[float] = []
