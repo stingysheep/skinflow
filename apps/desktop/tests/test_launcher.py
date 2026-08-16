@@ -1,9 +1,12 @@
 from skinflow_desktop.launcher import (
     DEFAULT_PORT,
+    DEFAULT_WINDOW_SIZE,
     LOCAL_HOST,
     desktop_icon_path,
     find_available_port,
     generate_startup_token,
+    load_window_size,
+    save_window_size,
 )
 
 
@@ -36,3 +39,20 @@ def test_non_windows_single_instance_is_noop(monkeypatch) -> None:
 
     monkeypatch.setattr(launcher.os, "name", "posix")
     assert launcher.acquire_single_instance("test") is True
+
+
+def test_desktop_window_size_round_trips_between_sessions(tmp_path) -> None:
+    state = tmp_path / "desktop_window.json"
+    assert load_window_size(state) == DEFAULT_WINDOW_SIZE
+
+    save_window_size(state, 1260, 780)
+
+    assert load_window_size(state) == (1260, 780)
+
+
+def test_desktop_window_size_rejects_invalid_or_too_small_values(tmp_path) -> None:
+    state = tmp_path / "desktop_window.json"
+    state.write_text('{"width": 500, "height": 400}', encoding="utf-8")
+    assert load_window_size(state) == (1100, 720)
+    state.write_text("invalid", encoding="utf-8")
+    assert load_window_size(state) == DEFAULT_WINDOW_SIZE

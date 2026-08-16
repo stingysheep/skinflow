@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import socket
@@ -14,6 +15,9 @@ from skinflow_api.settings import Settings, get_settings
 
 LOCAL_HOST = "127.0.0.1"
 DEFAULT_PORT = 58150
+DEFAULT_WINDOW_SIZE = (1440, 900)
+MIN_WINDOW_SIZE = (1100, 720)
+WINDOW_STATE_FILENAME = "desktop_window.json"
 ICON_PATH = Path(__file__).resolve().parents[1] / "assets" / "skinflow.ico"
 CSQAQ_TOKEN_ENV = "SKINFLOW_CSQAQ_API_TOKEN"
 SINGLE_INSTANCE_MUTEX = "Local\\SkinflowDesktop"
@@ -28,6 +32,31 @@ def generate_startup_token() -> str:
 def desktop_icon_path() -> Path:
     """Return the new project icon without consulting the legacy D: drive."""
     return ICON_PATH
+
+
+def window_state_path(settings: Settings) -> Path:
+    return Path(settings.database_path).with_name(WINDOW_STATE_FILENAME)
+
+
+def load_window_size(path: Path) -> tuple[int, int]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        width = int(payload["width"])
+        height = int(payload["height"])
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return DEFAULT_WINDOW_SIZE
+    return max(MIN_WINDOW_SIZE[0], width), max(MIN_WINDOW_SIZE[1], height)
+
+
+def save_window_size(path: Path, width: int, height: int) -> None:
+    normalized = {
+        "width": max(MIN_WINDOW_SIZE[0], int(width)),
+        "height": max(MIN_WINDOW_SIZE[1], int(height)),
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(f"{path.suffix}.tmp")
+    temporary.write_text(json.dumps(normalized), encoding="utf-8")
+    temporary.replace(path)
 
 
 def read_user_environment(name: str) -> str:
@@ -142,14 +171,22 @@ def start_desktop(settings: Settings | None = None) -> None:
         thread = threading.Thread(target=server.run, name="skinflow-api", daemon=True)
         thread.start()
 
-        webview.create_window(
+        state_path = window_state_path(desktop_settings)
+        width, height = load_window_size(state_path)
+        latest_size = [width, height]
+        window = webview.create_window(
             "Skinflow · CS2 交易工作台",
             f"http://{LOCAL_HOST}:{port}/?startup_token={token}",
-            width=1440,
-            height=900,
-            min_size=(1100, 720),
+            width=width,
+            height=height,
+            min_size=MIN_WINDOW_SIZE,
         )
+        if window is not None:
+            window.events.resized += lambda next_width, next_height: latest_size.__setitem__(
+                slice(None), [next_width, next_height]
+            )
         webview.start()
+        save_window_size(state_path, latest_size[0], latest_size[1])
         server.should_exit = True
         thread.join(timeout=5)
     finally:
