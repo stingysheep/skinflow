@@ -69,10 +69,12 @@
 .availability-segment{display:block;height:100%;transition:width var(--transition-fast)}
 .availability-segment.is-tradable{width:var(--tradable-share);background:var(--color-positive)}
 .availability-segment.is-cooldown{width:var(--cooldown-share);background:var(--color-warning)}
+.availability-segment.is-pending{width:var(--pending-share);background:var(--color-text-muted)}
 .availability-segment.is-listed{width:var(--listed-share);background:var(--color-interactive)}
 .availability-legend{display:flex;justify-content:space-between;gap:var(--space-2);color:var(--color-text-muted);font:var(--font-size-xs) var(--font-sans)}
 .availability-legend span:first-child{color:var(--color-positive)}
 .availability-legend span:nth-child(2){color:var(--color-warning)}
+.availability-legend span:nth-child(3){color:var(--color-text-muted)}
 .availability-legend span:last-child{color:var(--color-interactive)}
 .cooldown-popover{position:absolute;top:calc(100% + 5px);right:var(--space-3);z-index:5;display:grid;width:244px;overflow:hidden;border:var(--border-width) solid var(--color-border-strong);border-top:3px solid var(--color-warning);border-radius:0 0 var(--radius-md) var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-dialog);clip-path:inset(0 0 100% 0);opacity:0;pointer-events:none;transform:translateY(-5px);transform-origin:top;visibility:hidden;transition:clip-path 180ms ease-out,opacity 140ms ease-out,transform 180ms ease-out,visibility 0s linear 180ms}
 .trade-availability.has-cooldown:hover .cooldown-popover,.trade-availability.has-cooldown:focus .cooldown-popover{clip-path:inset(0);opacity:1;transform:translateY(0);visibility:visible;transition-delay:0s}

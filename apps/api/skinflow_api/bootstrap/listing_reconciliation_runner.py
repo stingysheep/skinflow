@@ -10,6 +10,7 @@ class ListingReconciliationRunner:
         self._service = service
         self._interval = max(15, interval_seconds)
         self._task: asyncio.Task[object] | None = None
+        self._reconcile_lock = asyncio.Lock()
 
     def start(self) -> None:
         if self._task is None or self._task.done():
@@ -17,11 +18,12 @@ class ListingReconciliationRunner:
 
     async def _run(self) -> None:
         while True:
-            await asyncio.to_thread(self._service.reconcile)
+            await self.reconcile_now()
             await asyncio.sleep(self._interval)
 
     async def reconcile_now(self) -> dict:
-        return await asyncio.to_thread(self._service.reconcile)
+        async with self._reconcile_lock:
+            return await asyncio.to_thread(self._service.reconcile)
 
     async def shutdown(self) -> None:
         if self._task is None:

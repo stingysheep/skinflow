@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS listing_item (
   contextid TEXT NOT NULL,
   assetid TEXT NOT NULL,
   status TEXT NOT NULL,
+  submission_started_at INTEGER,
   steam_listing_id TEXT,
   message TEXT,
   last_checked_at INTEGER,
@@ -79,7 +80,7 @@ CREATE TABLE IF NOT EXISTS listing_item (
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_listing_per_asset
   ON listing_item(platform,appid,contextid,assetid)
   WHERE status IN (
-    'submitting','submitted','pending_confirmation','active','pending_reconciliation'
+    'queued','submitting','submitted','pending_confirmation','active','pending_reconciliation'
   );
 """
 
@@ -113,6 +114,7 @@ class SqliteListingRepository:
             row[1] for row in self._connection.execute("PRAGMA table_info(listing_item)").fetchall()
         }
         for name, definition in {
+            "submission_started_at": "INTEGER",
             "last_checked_at": "INTEGER",
             "sold_at": "INTEGER",
             "sold_receive_total": "INTEGER",
@@ -121,6 +123,13 @@ class SqliteListingRepository:
         }.items():
             if name not in item_columns:
                 self._connection.execute(f"ALTER TABLE listing_item ADD COLUMN {name} {definition}")
+        self._connection.execute("DROP INDEX IF EXISTS one_active_listing_per_asset")
+        self._connection.execute(
+            "CREATE UNIQUE INDEX one_active_listing_per_asset "
+            "ON listing_item(platform,appid,contextid,assetid) WHERE status IN "
+            "('queued','submitting','submitted','pending_confirmation','active',"
+            "'pending_reconciliation')"
+        )
         self._connection.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS listing_item_sale_fill "
             "ON listing_item(sale_fill_id) WHERE sale_fill_id IS NOT NULL"
@@ -265,7 +274,8 @@ class SqliteListingRepository:
             cost_each = self._open_cost_each(row["market_hash_name"])
             active = self._connection.execute(
                 "SELECT 1 FROM listing_item WHERE platform=? AND appid=? AND contextid=? "
-                "AND assetid=? AND status IN ('submitting','submitted','pending_confirmation',"
+                "AND assetid=? AND status IN ("
+                "'queued','submitting','submitted','pending_confirmation',"
                 "'active','pending_reconciliation') LIMIT 1",
                 (selection.platform, selection.appid, selection.contextid, selection.assetid),
             ).fetchone()
@@ -430,8 +440,9 @@ class SqliteListingRepository:
                 self._connection.execute(
                     "INSERT INTO listing_item("
                     "id,request_id,preview_item_id,platform,appid,contextid,assetid,status,"
-                    "steam_listing_id,message,last_checked_at,sold_at,sold_receive_total,"
-                    "sale_fill_id,reconcile_error) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "submission_started_at,steam_listing_id,message,last_checked_at,sold_at,"
+                    "sold_receive_total,sale_fill_id,reconcile_error) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
                         str(uuid4()),
                         request_id,
@@ -440,7 +451,8 @@ class SqliteListingRepository:
                         item["appid"],
                         item["contextid"],
                         item["assetid"],
-                        "submitting",
+                        "queued",
+                        None,
                         None,
                         None,
                         None,
@@ -450,7 +462,43 @@ class SqliteListingRepository:
                         None,
                     ),
                 )
+                self._connection.execute(
+                    "UPDATE inventory_asset SET status='listing_pending' WHERE "
+                    "platform=? AND appid=? AND contextid=? AND assetid=?",
+                    (item["platform"], item["appid"], item["contextid"], item["assetid"]),
+                )
         return self.get_request(request_id) or {}
+
+    def begin_submission(self, request_id: str, decision: dict) -> None:
+        with self._lock, self._connection:
+            self._connection.execute(
+                "UPDATE listing_item SET status='submitting',submission_started_at=? "
+                "WHERE request_id=? "
+                "AND platform=? AND appid=? AND contextid=? AND assetid=? AND status='queued'",
+                (
+                    int(time.time() * 1000),
+                    request_id,
+                    decision["platform"],
+                    decision["appid"],
+                    decision["contextid"],
+                    decision["assetid"],
+                ),
+            )
+
+    def abort_request(self, request_id: str, message: str) -> None:
+        with self._lock, self._connection:
+            self._connection.execute(
+                "UPDATE inventory_asset SET status='available' WHERE status='listing_pending' "
+                "AND (platform,appid,contextid,assetid) IN ("
+                "SELECT platform,appid,contextid,assetid FROM listing_item "
+                "WHERE request_id=? AND status='queued')",
+                (request_id,),
+            )
+            self._connection.execute(
+                "UPDATE listing_item SET status='failed',message=? "
+                "WHERE request_id=? AND status='queued'",
+                (message, request_id),
+            )
 
     def record_result(self, request_id: str, decision: dict, result: ListingGatewayResult) -> None:
         if result.accepted:
@@ -474,10 +522,21 @@ class SqliteListingRepository:
                     decision["assetid"],
                 ),
             )
-            if status in {"pending_confirmation", "active", "pending_reconciliation"}:
+            if status == "active":
                 self._connection.execute(
                     "UPDATE inventory_asset SET status='listed' WHERE "
                     "platform=? AND appid=? AND contextid=? AND assetid=?",
+                    (
+                        decision["platform"],
+                        decision["appid"],
+                        decision["contextid"],
+                        decision["assetid"],
+                    ),
+                )
+            elif status == "failed":
+                self._connection.execute(
+                    "UPDATE inventory_asset SET status='available' WHERE status='listing_pending' "
+                    "AND platform=? AND appid=? AND contextid=? AND assetid=?",
                     (
                         decision["platform"],
                         decision["appid"],
@@ -528,12 +587,13 @@ class SqliteListingRepository:
     def list_reconciliation_items(self) -> list[dict]:
         with self._lock:
             rows = self._connection.execute(
-                "SELECT i.*,r.created_at request_created_at,"
+                "SELECT i.*,r.created_at request_created_at,r.status request_status,"
                 "p.market_hash_name,p.buyer_pays,p.seller_proceeds "
                 "FROM listing_item i JOIN listing_preview_item p ON p.id=i.preview_item_id "
                 "JOIN listing_request r ON r.id=i.request_id "
                 "WHERE i.status IN ('submitting','active','pending_confirmation',"
-                "'pending_reconciliation') "
+                "'pending_reconciliation') AND NOT "
+                "(i.status='submitting' AND r.status='submitting') "
                 "ORDER BY i.rowid"
             ).fetchall()
         return [dict(row) for row in rows]
@@ -573,7 +633,9 @@ class SqliteListingRepository:
                 (checked_at, item_id),
             )
             self._connection.execute(
-                "UPDATE inventory_asset SET status='missing' WHERE status='listed' AND "
+                "UPDATE inventory_asset SET status=CASE "
+                "WHEN status='listing_pending' THEN 'available' "
+                "ELSE 'missing' END WHERE status IN ('listed','listing_pending') AND "
                 "(platform,appid,contextid,assetid)="
                 "(SELECT platform,appid,contextid,assetid FROM listing_item WHERE id=?)",
                 (item_id,),
@@ -600,9 +662,43 @@ class SqliteListingRepository:
             self._connection.execute(
                 "UPDATE listing_request SET status='submitted' WHERE id=("
                 "SELECT request_id FROM listing_item WHERE id=?) "
-                "AND status IN ('submitting','pending_reconciliation')",
-                (item_id,),
+                "AND status='pending_reconciliation' AND NOT EXISTS("
+                "SELECT 1 FROM listing_item WHERE request_id=("
+                "SELECT request_id FROM listing_item WHERE id=?) "
+                "AND status IN ('queued','submitting','pending_reconciliation'))",
+                (item_id, item_id),
             )
+
+    def recover_interrupted_requests(self) -> None:
+        """Recover work left by a previous process before accepting new requests."""
+        with self._lock, self._connection:
+            requests = self._connection.execute(
+                "SELECT id FROM listing_request WHERE status='submitting'"
+            ).fetchall()
+            for request in requests:
+                request_id = request["id"]
+                self._connection.execute(
+                    "UPDATE inventory_asset SET status='available' WHERE status='listing_pending' "
+                    "AND (platform,appid,contextid,assetid) IN ("
+                    "SELECT platform,appid,contextid,assetid FROM listing_item "
+                    "WHERE request_id=? AND status='queued')",
+                    (request_id,),
+                )
+                self._connection.execute(
+                    "UPDATE listing_item SET status='failed',message='submission_interrupted' "
+                    "WHERE request_id=? AND status='queued'",
+                    (request_id,),
+                )
+                self._connection.execute(
+                    "UPDATE listing_item SET status='pending_reconciliation',"
+                    "message=COALESCE(message,'submission_interrupted') "
+                    "WHERE request_id=? AND status='submitting'",
+                    (request_id,),
+                )
+                self._connection.execute(
+                    "UPDATE listing_request SET status='pending_reconciliation' WHERE id=?",
+                    (request_id,),
+                )
 
     def _refresh_request_status(self, item_id: str) -> None:
         row = self._connection.execute(

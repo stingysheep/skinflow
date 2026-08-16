@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, ClipboardList, RefreshCw, XCircle } from 'lucide-react'
 
 import { Button, FeedbackState } from '../../../shared/components'
@@ -15,7 +15,7 @@ type ListingItem = ListingRequest['items'][number] & {
   requestId: string
   requestCreatedAt: number
 }
-type SectionKey = 'active' | 'sold' | 'closed'
+type SectionKey = 'pending' | 'active' | 'sold' | 'closed'
 type ListingGroup = {
   name: string
   displayName: string
@@ -24,14 +24,16 @@ type ListingGroup = {
   items: ListingItem[]
 }
 
-const REFRESH_INTERVAL_MS = 15_000
-const sectionOrder: SectionKey[] = ['active', 'sold', 'closed']
+const REFRESH_INTERVAL_MS = 60_000
+const sectionOrder: SectionKey[] = ['pending', 'active', 'sold', 'closed']
 const sectionLabels: Record<SectionKey, string> = {
+  pending: '等待提交/待确认',
   active: '在售',
   sold: '已售出',
   closed: '已取消/失败',
 }
 const statusLabels: Record<string, string> = {
+  queued: '等待提交',
   pending_confirmation: '待手机确认',
   active: '在售',
   sold: '已售出',
@@ -51,11 +53,12 @@ export function ListingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [expandedSections, setExpandedSections] = useState<Set<SectionKey>>(new Set(['active']))
+  const [expandedSections, setExpandedSections] = useState<Set<SectionKey>>(new Set(['pending', 'active']))
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [cancelling, setCancelling] = useState(false)
   const { revision } = useListingNotifications()
   const requestInFlight = useRef(false)
+  const syncInFlight = useRef(false)
 
   const items = useMemo(() => requests.flatMap((request) => request.items.map((item) => ({
     ...item,
@@ -66,7 +69,7 @@ export function ListingsPage() {
   const allItemsByName = useMemo(() => groupItems(items), [items])
   const cancellableIds = useMemo(() => new Set(items.filter(canCancel).map((item) => item.id)), [items])
 
-  async function load(initial = false) {
+  const load = useCallback(async (initial = false) => {
     if (requestInFlight.current) return
     requestInFlight.current = true
     if (initial) setLoading(true)
@@ -82,17 +85,12 @@ export function ListingsPage() {
       requestInFlight.current = false
       if (initial) setLoading(false)
     }
-  }
+  }, [])
 
-  useEffect(() => {
-    void load(true)
-    const timer = window.setInterval(() => void load(), REFRESH_INTERVAL_MS)
-    return () => window.clearInterval(timer)
-  }, [revision])
-
-  async function sync() {
-    if (syncing) return
-    setSyncing(true)
+  const sync = useCallback(async (showActivity = true) => {
+    if (syncInFlight.current) return
+    syncInFlight.current = true
+    if (showActivity) setSyncing(true)
     setError(null)
     try {
       await reconcileListingRequests()
@@ -100,9 +98,16 @@ export function ListingsPage() {
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '挂单状态同步失败')
     } finally {
-      setSyncing(false)
+      syncInFlight.current = false
+      if (showActivity) setSyncing(false)
     }
-  }
+  }, [load])
+
+  useEffect(() => {
+    void load(true)
+    const timer = window.setInterval(() => void sync(false), REFRESH_INTERVAL_MS)
+    return () => window.clearInterval(timer)
+  }, [load, revision, sync])
 
   async function cancelSelected() {
     if (!selected.size || !window.confirm(`确认取消选中的 ${selected.size} 个 Steam 挂单？`)) return
@@ -284,11 +289,12 @@ function finiteOrZero(value: number | null | undefined) {
 function sectionFor(item: Pick<ListingItem, 'status'>): SectionKey {
   if (item.status === 'sold') return 'sold'
   if (['cancelled', 'failed'].includes(item.status)) return 'closed'
+  if (['queued', 'submitting', 'pending_confirmation', 'pending_reconciliation'].includes(item.status)) return 'pending'
   return 'active'
 }
 
 function canCancel(item: Pick<ListingItem, 'status' | 'steam_listing_id'>) {
-  return ['pending_confirmation', 'active'].includes(item.status)
+  return item.status === 'active' && Boolean(item.steam_listing_id)
 }
 
 function formatRatio(cost: number | null | undefined, proceeds: number | null | undefined) {

@@ -16,6 +16,7 @@ from skinflow_api.domain.pricing import (
 
 from .models import (
     MAX_LISTING_PREVIEW_ASSETS,
+    ListingGatewayResult,
     ListingGroupSelection,
     ListingMarketSnapshot,
     ListingSelection,
@@ -35,6 +36,9 @@ class ListingService:
         self._persistence = persistence
         self._gateway = gateway
         self._market_snapshot_provider = market_snapshot_provider
+        recover = getattr(self._persistence, "recover_interrupted_requests", None)
+        if recover is not None:
+            recover()
 
     def create_preview(self, selections: tuple[ListingSelection, ...]) -> dict:
         if not 1 <= len(selections) <= MAX_LISTING_PREVIEW_ASSETS:
@@ -144,9 +148,17 @@ class ListingService:
         if request.get("replayed"):
             return request
         for item in preview["items"]:
+            self._persistence.begin_submission(request["id"], item)
             try:
                 result = self._gateway.submit(item)
             except PermissionError:
+                self._persistence.record_result(
+                    request["id"],
+                    item,
+                    ListingGatewayResult(False, False, None, "steam_session_expired"),
+                )
+                self._persistence.abort_request(request["id"], "submission_aborted")
+                self._persistence.complete_request(request["id"])
                 raise
             except Exception as error:
                 result = self._uncertain_result(type(error).__name__)
@@ -277,8 +289,6 @@ class ListingService:
 
     @staticmethod
     def _uncertain_result(message: str):
-        from .models import ListingGatewayResult
-
         return ListingGatewayResult(False, False, None, f"uncertain:{message}")
 
 

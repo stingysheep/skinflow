@@ -129,7 +129,10 @@ def test_listing_preview_and_idempotent_submit(tmp_path: Path) -> None:
     assert first["status"] == "submitted"
     assert second["replayed"] is True
     assert gateway.calls == 1
-    assert SqliteInventoryRepository(tmp_path / "listing.db").list_assets()[0]["status"] == "listed"
+    assert (
+        SqliteInventoryRepository(tmp_path / "listing.db").list_assets()[0]["status"]
+        == "listing_pending"
+    )
 
 
 def test_interrupted_submitting_item_is_available_for_reconciliation(tmp_path: Path) -> None:
@@ -141,9 +144,14 @@ def test_interrupted_submitting_item_is_available_for_reconciliation(tmp_path: P
     preview = service.create_preview((ListingSelection("steam", 730, "2", assetid),))
     request = repository.create_request(preview["id"], "interrupted-key")
     item_id = request["items"][0]["id"]
+    repository.begin_submission(request["id"], preview["items"][0])
+
+    assert repository.list_reconciliation_items() == []
+
+    ListingService(repository, repository, Gateway(ListingGatewayResult(True, True, None, None)))
 
     recoverable = repository.list_reconciliation_items()
-    assert recoverable[0]["status"] == "submitting"
+    assert recoverable[0]["status"] == "pending_reconciliation"
     assert recoverable[0]["request_created_at"] > 0
 
     repository.mark_active(item_id, 2_000, "listing-recovered")
@@ -153,6 +161,135 @@ def test_interrupted_submitting_item_is_available_for_reconciliation(tmp_path: P
     assert updated["status"] == "submitted"
     assert updated["items"][0]["status"] == "active"
     assert SqliteInventoryRepository(path).list_assets()[0]["status"] == "listed"
+
+
+def test_unattempted_assets_are_queued_and_released_after_restart(tmp_path: Path) -> None:
+    path = tmp_path / "listing-queued-recovery.db"
+    repository, assetid = _seed(path)
+    service = ListingService(
+        repository, repository, Gateway(ListingGatewayResult(True, True, None, None))
+    )
+    preview = service.create_preview((ListingSelection("steam", 730, "2", assetid),))
+    request = repository.create_request(preview["id"], "queued-key")
+
+    assert request["items"][0]["status"] == "queued"
+    assert SqliteInventoryRepository(path).list_assets()[0]["status"] == "listing_pending"
+
+    ListingService(repository, repository, Gateway(ListingGatewayResult(True, True, None, None)))
+
+    recovered = repository.get_request(request["id"])
+    assert recovered is not None
+    assert recovered["items"][0]["status"] == "failed"
+    assert recovered["items"][0]["message"] == "submission_interrupted"
+    assert SqliteInventoryRepository(path).list_assets()[0]["status"] == "available"
+
+
+def test_directly_active_submit_is_the_only_result_marked_listed(tmp_path: Path) -> None:
+    path = tmp_path / "listing-direct-active.db"
+    repository, assetid = _seed(path)
+    service = ListingService(
+        repository, repository, Gateway(ListingGatewayResult(True, False, "123", None))
+    )
+    preview = service.create_preview((ListingSelection("steam", 730, "2", assetid),))
+
+    request = service.submit(preview["id"], "direct-active-key")
+
+    assert request["items"][0]["status"] == "active"
+    assert SqliteInventoryRepository(path).list_assets()[0]["status"] == "listed"
+
+
+def test_reconciliation_cannot_finish_a_request_while_submit_loop_is_running(
+    tmp_path: Path,
+) -> None:
+    repository, assetid = _seed(tmp_path / "listing-live-submit.db")
+    service = ListingService(
+        repository, repository, Gateway(ListingGatewayResult(True, True, None, None))
+    )
+    preview = service.create_preview((ListingSelection("steam", 730, "2", assetid),))
+    request = repository.create_request(preview["id"], "live-submit-key")
+    repository.begin_submission(request["id"], preview["items"][0])
+    repository.record_result(
+        request["id"], preview["items"][0], ListingGatewayResult(True, True, None, None)
+    )
+
+    repository.mark_active(request["items"][0]["id"], 2_000, "listing-real")
+
+    current = repository.get_request(request["id"])
+    assert current is not None
+    assert current["status"] == "submitting"
+
+    completed = repository.complete_request(request["id"])
+    assert completed["status"] == "submitted"
+
+
+def test_expired_session_releases_unattempted_assets(tmp_path: Path) -> None:
+    path = tmp_path / "listing-expired-session.db"
+    repository, assetid = _seed(path)
+
+    class ExpiredGateway:
+        def submit(self, _decision: dict) -> ListingGatewayResult:
+            raise PermissionError("expired")
+
+    service = ListingService(repository, repository, ExpiredGateway())
+    preview = service.create_preview((ListingSelection("steam", 730, "2", assetid),))
+
+    with pytest.raises(PermissionError, match="expired"):
+        service.submit(preview["id"], "expired-session-key")
+
+    request = repository.list_requests()[0]
+    assert request["status"] == "failed"
+    assert request["items"][0]["status"] == "failed"
+    assert SqliteInventoryRepository(path).list_assets()[0]["status"] == "available"
+
+
+def test_live_batch_exposes_only_current_item_as_submitting(tmp_path: Path) -> None:
+    path = tmp_path / "listing-live-batch.db"
+    repository, _ = _seed(path)
+    assets = (
+        InventoryAsset(
+            "steam", 730, "2", "asset", "AK-47 | Slate", "AK-47 | Slate", "",
+            "1", "0", True, True,
+        ),
+        InventoryAsset(
+            "steam", 730, "2", "asset-2", "AK-47 | Slate", "AK-47 | Slate", "",
+            "1", "0", True, True,
+        ),
+    )
+    inventory = SqliteInventoryRepository(path)
+    inventory.sync(assets)
+    started = Event()
+    release = Event()
+
+    class BlockingGateway:
+        def submit(self, _decision: dict) -> ListingGatewayResult:
+            started.set()
+            assert release.wait(2)
+            return ListingGatewayResult(True, True, None, None)
+
+    service = ListingService(repository, repository, BlockingGateway())
+    preview = service.create_grouped_preview((ListingGroupSelection("AK-47 | Slate", 2),))
+    submitted: list[dict] = []
+    worker = Thread(
+        target=lambda: submitted.append(service.submit(preview["id"], "live-batch-key")),
+        daemon=True,
+    )
+    worker.start()
+    assert started.wait(2)
+
+    live = repository.list_requests()[0]
+    assert [item["status"] for item in live["items"]] == ["submitting", "queued"]
+    assert repository.list_reconciliation_items() == []
+    group = inventory.list_grouped_assets()[0]
+    assert group["pending_listing_quantity"] == 2
+    assert group["listed_quantity"] == 0
+
+    release.set()
+    worker.join(2)
+    assert not worker.is_alive()
+    assert [item["status"] for item in submitted[0]["items"]] == [
+        "pending_confirmation",
+        "pending_confirmation",
+    ]
 
 
 def test_listing_preview_without_bids_uses_lowest_ask_without_undercutting(

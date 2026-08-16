@@ -47,15 +47,16 @@ describe('ListingsPage', () => {
     vi.useRealTimers()
   })
 
-  it('refreshes listing status every 15 seconds', async () => {
+  it('reconciles Steam state before the periodic refresh', async () => {
     vi.useFakeTimers()
     render(<ListingsPage />)
     await act(async () => { await Promise.resolve() })
 
     expect(screen.getByText('AK-47 | 板岩')).toBeInTheDocument()
-    await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
 
     expect(getListingRequests).toHaveBeenCalledTimes(2)
+    expect(reconcileListingRequests).toHaveBeenCalledTimes(1)
   })
 
   it('selects all cancellable assets through status and item-group parents', async () => {
@@ -70,7 +71,7 @@ describe('ListingsPage', () => {
     expect(screen.getByRole('checkbox', { name: '选择AK-47 | 板岩下所有可取消挂单' })).toBeChecked()
   })
 
-  it('allows selecting an active listing while its Steam ID is being reconciled', async () => {
+  it('does not expose cancellation until an active item has a Steam listing ID', async () => {
     vi.mocked(getListingRequests).mockResolvedValueOnce({ items: [{
       ...request,
       items: [{ ...request.items[0], steam_listing_id: null }],
@@ -78,9 +79,8 @@ describe('ListingsPage', () => {
     render(<ListingsPage />)
 
     const statusCheckbox = await screen.findByRole('checkbox', { name: '选择在售下所有可取消挂单' })
-    expect(statusCheckbox).toBeEnabled()
-    fireEvent.click(statusCheckbox)
-    expect(screen.getByRole('button', { name: '取消所选挂单' })).toBeEnabled()
+    expect(statusCheckbox).toBeDisabled()
+    expect(screen.getByRole('button', { name: '取消所选挂单' })).toBeDisabled()
   })
 
   it('renders status, item group, and asset levels in order', async () => {
@@ -93,6 +93,25 @@ describe('ListingsPage', () => {
     expect(screen.getByRole('checkbox', { name: '选择在售下所有可取消挂单' })).toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: '选择AK-47 | 板岩下所有可取消挂单' })).toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: '选择取消资产 asset-1' })).toBeInTheDocument()
+  })
+
+  it('separates queued and mobile-confirmation items from actual active listings', async () => {
+    vi.mocked(getListingRequests).mockResolvedValueOnce({ items: [{
+      ...request,
+      items: [
+        { ...request.items[0], id: 'item-queued', status: 'queued', steam_listing_id: null },
+        { ...request.items[0], id: 'item-pending', status: 'pending_confirmation', steam_listing_id: null },
+        request.items[0],
+      ],
+    }] })
+
+    render(<ListingsPage />)
+
+    expect(await screen.findByText('等待提交/待确认')).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: '展开 AK-47 | 板岩' })[0])
+    expect(screen.getByText('等待提交')).toBeInTheDocument()
+    expect(screen.getByText('待手机确认')).toBeInTheDocument()
+    expect(screen.getByText('在售')).toBeInTheDocument()
   })
 
   it('keeps grouped totals numeric when legacy rows omit buyer price', async () => {

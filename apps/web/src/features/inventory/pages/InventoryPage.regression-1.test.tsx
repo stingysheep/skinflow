@@ -85,6 +85,37 @@ describe('InventoryPage listing preview regression', () => {
     expect(price).toHaveValue('19.98')
   })
 
+  it('keeps the preview open while the serial Steam submission is running', async () => {
+    mockedCreatePreview.mockResolvedValue({
+      id: 'preview-1',
+      status: 'ready',
+      expires_at: Date.now() + 60_000,
+      items: [{
+        id: 'preview-item-1', market_hash_name: 'AK-47 | Slate',
+        display_name: 'AK-47 | 板岩', image_url: '', assetid: '1001',
+        buyer_pays: 100, steam_fee: 5, publisher_fee: 10,
+        seller_proceeds: 85, cost_each: 50, ratio_ppm: 588_235,
+      }],
+    })
+    let finish: ((value: Awaited<ReturnType<typeof submitListing>>) => void) | undefined
+    mockedSubmitListing.mockImplementation(() => new Promise((resolve) => { finish = resolve }))
+
+    render(<InventoryPage />)
+    fireEvent.click(await screen.findByRole('checkbox'))
+    fireEvent.click(screen.getByRole('button', { name: '预览挂单' }))
+    fireEvent.click(await screen.findByRole('button', { name: '确认并提交' }))
+
+    const close = screen.getByRole('button', { name: '手动关闭' })
+    await waitFor(() => expect(close).toBeDisabled())
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    await act(async () => finish?.({
+      id: 'request-1', status: 'submitted', items: [{ status: 'pending_confirmation' }],
+    } as Awaited<ReturnType<typeof submitListing>>))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
   it('clears selections that disappear after an inventory refresh', async () => {
     mockedGetInventory.mockReset()
     mockedGetInventory

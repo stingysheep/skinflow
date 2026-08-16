@@ -11,6 +11,7 @@
 .listing-summary-row{min-height:58px;border-left:3px solid var(--color-border-strong);font:var(--font-size-sm) var(--font-mono)}
 .listing-summary-row.is-section{background:var(--color-workspace-header);font-weight:600}
 .listing-status-section.is-active>.is-section{border-left-color:var(--color-interactive)}
+.listing-status-section.is-pending>.is-section{border-left-color:var(--color-warning)}
 .listing-status-section.is-sold>.is-section{border-left-color:var(--color-positive)}
 .listing-status-section.is-closed>.is-section{border-left-color:var(--color-text-faint)}
 .listing-summary-row.is-group{min-height:64px;border-top:var(--border-width) solid var(--color-border);border-left-color:transparent;background:var(--color-surface)}
@@ -35,6 +36,7 @@
 .listing-proceeds{color:var(--color-positive);font-weight:600}
 .listing-status-label{justify-self:end;display:inline-flex;align-items:center;justify-content:center;min-width:88px;min-height:26px;margin-right:var(--space-3);padding:0 var(--space-2)!important;border:var(--border-width) solid var(--color-border-strong);background:var(--color-surface);text-align:center!important}
 .listing-status-label.is-active{border-color:var(--color-interactive);background:var(--color-surface-selected);color:var(--color-interactive)}
+.listing-status-label.is-pending{border-color:var(--color-warning);background:var(--color-warning-surface);color:var(--color-warning)}
 .listing-status-label.is-sold{border-color:var(--color-positive);background:var(--color-positive-surface);color:var(--color-positive)}
 .listing-status-label.is-closed{color:var(--color-text-muted)}
 .listing-status-progress{display:grid;gap:5px;min-width:0;text-align:left!important}

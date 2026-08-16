@@ -10,7 +10,7 @@ export type InventoryAsset = {
   tradable: boolean
   hold_text: string | null
   wear_text?: string | null
-  status: 'available' | 'missing' | 'listed' | 'sold'
+  status: 'available' | 'missing' | 'listing_pending' | 'listed' | 'sold'
 }
 
 export const inventoryAssetKey = (item: Pick<InventoryAsset, 'platform' | 'appid' | 'contextid' | 'assetid'>) =>
@@ -31,6 +31,7 @@ export type InventoryGroup = {
   wear_text?: string | null
   total_quantity: number
   available_quantity: number
+  pending_listing_quantity?: number
   listed_quantity: number
   marketable_quantity: number
   tradable_quantity: number

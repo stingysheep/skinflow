@@ -97,7 +97,8 @@ class SqliteInventoryRepository:
                     "image_url=excluded.image_url,classid=excluded.classid,instanceid=excluded.instanceid,"
                     "marketable=excluded.marketable,tradable=excluded.tradable,hold_text=excluded.hold_text,"
                     "wear_text=excluded.wear_text,tradable_after=excluded.tradable_after,"
-                    "status=CASE WHEN inventory_asset.status='listed' THEN 'listed' "
+                    "status=CASE WHEN inventory_asset.status IN ('listed','listing_pending') "
+                    "THEN inventory_asset.status "
                     "ELSE 'available' END,last_seen_at=excluded.last_seen_at",
                     (
                         item.platform,
@@ -174,11 +175,15 @@ class SqliteInventoryRepository:
                 "FROM purchase_lot l LEFT JOIN sold s ON s.purchase_lot_id=l.id "
                 "WHERE l.quantity>COALESCE(s.quantity,0) GROUP BY l.market_hash_name), "
                 "inventory_current AS (SELECT * FROM inventory_asset WHERE "
-                "status IN ('available','listed') AND NOT (status='available' AND "
+                "status IN ('available','listing_pending','listed') "
+                "AND NOT (status='available' AND "
                 "COALESCE(hold_text,'') LIKE '%已在 Steam 社区市场挂售%')), "
                 "asset_groups AS (SELECT market_hash_name,"
-                "SUM(CASE WHEN status IN ('available','listed') THEN 1 ELSE 0 END) total_quantity, "
+                "SUM(CASE WHEN status IN ('available','listing_pending','listed') "
+                "THEN 1 ELSE 0 END) total_quantity, "
                 "SUM(CASE WHEN status='available' THEN 1 ELSE 0 END) available_quantity, "
+                "SUM(CASE WHEN status='listing_pending' THEN 1 ELSE 0 END) "
+                "pending_listing_quantity, "
                 "SUM(CASE WHEN status='listed' THEN 1 ELSE 0 END) listed_quantity, "
                 "SUM(CASE WHEN status='available' AND marketable=1 "
                 "THEN 1 ELSE 0 END) marketable_quantity, "
@@ -193,6 +198,7 @@ class SqliteInventoryRepository:
                 "COALESCE(NULLIF(m.display_name_zh,''),'中文名称待同步') localized_name, "
                 "COALESCE(m.image_url,'') image_url,COALESCE(a.total_quantity,0) total_quantity, "
                 "COALESCE(a.available_quantity,0) available_quantity, "
+                "COALESCE(a.pending_listing_quantity,0) pending_listing_quantity, "
                 "COALESCE(a.listed_quantity,0) listed_quantity, "
                 "COALESCE(a.marketable_quantity,0) marketable_quantity, "
                 "COALESCE(a.tradable_quantity,0) tradable_quantity, "
@@ -230,6 +236,7 @@ class SqliteInventoryRepository:
                 "display_name": row["localized_name"],
                 "total_quantity": int(row["total_quantity"]),
                 "available_quantity": int(row["available_quantity"]),
+                "pending_listing_quantity": int(row["pending_listing_quantity"]),
                 "listed_quantity": int(row["listed_quantity"]),
                 "marketable_quantity": int(row["marketable_quantity"]),
                 "tradable_quantity": int(row["tradable_quantity"]),

@@ -77,7 +77,12 @@ export function ListingPreviewDialog({ preview, open, onOpenChange, onSubmitted 
     }
   }
 
-  return <Dialog open={open} onOpenChange={onOpenChange} trigger={<span />} contentClassName="listing-preview-dialog" title="确认 Steam 挂单" description="按同类物品核对盘口、买家支付价和预计实收；提交后仍需在 Steam 手机端确认。">
+  function handleOpenChange(nextOpen: boolean) {
+    if (submitting && !nextOpen) return
+    onOpenChange(nextOpen)
+  }
+
+  return <Dialog open={open} onOpenChange={handleOpenChange} trigger={<span />} contentClassName="listing-preview-dialog" title="确认 Steam 挂单" description="按同类物品核对盘口、买家支付价和预计实收；提交后仍需在 Steam 手机端确认。">
     {preview ? <div className="listing-preview">
       <div className="listing-preview-summary"><span>{groups.length} 个物品组</span><span>{preview.items.length} 件资产</span><span>预览有效至 {new Date(preview.expires_at).toLocaleTimeString()}</span></div>
       <div className="listing-preview-intro"><div><strong>本次挂单价格核对</strong><small>盘口在创建预览时从 Steam 实时刷新，默认采用最高求购价；输入价格仍按买家支付总价换算卖家实收。</small></div><div className="listing-preview-total"><span>{money(totals.buyerPays)}</span><small>买家支付合计 · 实收 {money(totals.proceeds)}</small></div></div>
@@ -99,7 +104,7 @@ export function ListingPreviewDialog({ preview, open, onOpenChange, onSubmitted 
       </div>)}
       <div className="listing-caution"><TriangleAlert size={15} aria-hidden="true" /><span>此操作会向 Steam 提交真实挂单，不会自动执行手机确认，也不会提前记为成交。</span></div>
       {submitError ? <div className="listing-action-error" role="alert">{submitError}</div> : null}
-      <div className="dialog-actions"><Button variant="ghost" onClick={() => onOpenChange(false)}>手动关闭</Button><Button variant="primary" loading={submitting} onClick={() => void submit()}>确认并提交</Button></div>
+      <div className="dialog-actions"><Button variant="ghost" disabled={submitting} onClick={() => handleOpenChange(false)}>手动关闭</Button><Button variant="primary" loading={submitting} disabled={submitting} onClick={() => void submit()}>确认并提交</Button></div>
     </div> : null}
   </Dialog>
 }

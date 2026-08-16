@@ -274,6 +274,31 @@ def test_grouped_inventory_deduplicates_listed_asset_from_trade_context(
     assert group["cooldown_batches"] == []
 
 
+def test_grouped_inventory_keeps_pending_listing_out_of_available_and_listed(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "pending-listing-context.db"
+    repository = SqliteInventoryRepository(database)
+    LedgerRepository(database)
+    repository.sync((asset("pending", "2"),))
+    connection = sqlite3.connect(database)
+    with connection:
+        connection.execute(
+            "UPDATE inventory_asset SET status='listing_pending' WHERE assetid=? AND contextid='2'",
+            ("pending",),
+        )
+    connection.close()
+
+    repository.sync((asset("pending", "2"),))
+    group = repository.list_grouped_assets()[0]
+
+    assert group["total_quantity"] == 1
+    assert group["available_quantity"] == 0
+    assert group["pending_listing_quantity"] == 1
+    assert group["listed_quantity"] == 0
+    assert group["cooldown_batches"] == []
+
+
 def test_inventory_group_details_refreshes_stale_steam_book_before_returning() -> None:
     fresh_observed_at = int(time.time() * 1000)
 

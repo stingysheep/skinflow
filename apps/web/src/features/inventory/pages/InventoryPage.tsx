@@ -16,7 +16,7 @@ import {
 import '../inventory.css'
 
 type InventoryScope = 'all' | 'held'
-type InventoryTradeFilter = 'all' | 'tradable' | 'cooldown' | 'listed'
+type InventoryTradeFilter = 'all' | 'tradable' | 'cooldown' | 'pending' | 'listed'
 const INVENTORY_REFRESH_INTERVAL_MS = 60_000
 
 export function InventoryPage() {
@@ -71,6 +71,7 @@ export function InventoryPage() {
       const matchesFilter = tradeFilter === 'all'
         || (tradeFilter === 'tradable' && group.tradable_quantity > 0)
         || (tradeFilter === 'cooldown' && Math.max(0, group.available_quantity - group.tradable_quantity) > 0)
+        || (tradeFilter === 'pending' && (group.pending_listing_quantity ?? 0) > 0)
         || (tradeFilter === 'listed' && (group.listed_quantity ?? 0) > 0)
       const matchesQuery = !normalizedQuery || `${group.display_name} ${group.market_hash_name}`
         .toLocaleLowerCase()
@@ -193,6 +194,7 @@ export function InventoryPage() {
           <option value="all">全部状态</option>
           <option value="tradable">可交易</option>
           <option value="cooldown">冷却中</option>
+          <option value="pending">待确认</option>
           <option value="listed">在售</option>
         </select>
         <span>{visibleGroups.length} 组 · 已选 {selectedCount} 件</span>
@@ -221,12 +223,14 @@ function normalizeGroups(data: InventoryResponse | null): InventoryGroup[] {
       image_url: item.image_url,
       total_quantity: 0,
       available_quantity: 0,
+      pending_listing_quantity: 0,
       listed_quantity: 0,
       marketable_quantity: 0,
       tradable_quantity: 0,
     }
     current.total_quantity += 1
     if (item.status === 'available') current.available_quantity += 1
+    if (item.status === 'listing_pending') current.pending_listing_quantity = (current.pending_listing_quantity ?? 0) + 1
     if (item.status === 'listed') current.listed_quantity += 1
     if (item.status === 'available' && item.marketable) current.marketable_quantity += 1
     if (item.status === 'available' && item.marketable && item.tradable) current.tradable_quantity += 1

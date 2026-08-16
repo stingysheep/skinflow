@@ -1,7 +1,11 @@
+import asyncio
+import time
+
 from skinflow_api.application.listing.reconciliation import (
     ListingReconciliationService,
     SteamListingStatus,
 )
+from skinflow_api.bootstrap.listing_reconciliation_runner import ListingReconciliationRunner
 
 
 class Store:
@@ -153,6 +157,26 @@ def test_reconciliation_includes_pending_confirmation_items():
     assert store.items[0]["status"] == "active"
 
 
+def test_missing_market_row_does_not_cancel_mobile_confirmation():
+    store = Store()
+    store.items[0]["status"] = "pending_confirmation"
+
+    class MissingStatusPort:
+        def statuses(self, listing_ids):
+            return {
+                listing_ids[0]: SteamListingStatus(
+                    listing_ids[0],
+                    "cancelled",
+                    external_ref=f"steam:market-missing:{listing_ids[0]}",
+                )
+            }
+
+    summary = ListingReconciliationService(store, MissingStatusPort(), Ledger()).reconcile()
+
+    assert summary == {"checked": 1, "sold": 0, "cancelled": 0, "errors": 0}
+    assert store.items[0]["status"] == "pending_confirmation"
+
+
 def test_reconciliation_persists_listing_id_when_promoting_active():
     store = Store()
     store.items[0]["status"] = "pending_confirmation"
@@ -181,6 +205,28 @@ def test_reconciliation_promotes_pending_transport_to_active():
     assert store.items[0]["status"] == "active"
 
 
+def test_uncertain_late_batch_item_uses_its_own_submission_grace_period():
+    store = Store()
+    store.items[0]["status"] = "pending_reconciliation"
+    store.items[0]["request_created_at"] = 1
+    store.items[0]["submission_started_at"] = int(time.time() * 1000)
+
+    class MissingStatusPort:
+        def statuses(self, listing_ids):
+            return {
+                listing_ids[0]: SteamListingStatus(
+                    listing_ids[0],
+                    "cancelled",
+                    external_ref=f"steam:market-missing:{listing_ids[0]}",
+                )
+            }
+
+    summary = ListingReconciliationService(store, MissingStatusPort(), Ledger()).reconcile()
+
+    assert summary == {"checked": 1, "sold": 0, "cancelled": 0, "errors": 0}
+    assert store.items[0]["status"] == "pending_reconciliation"
+
+
 def test_reconciliation_recovers_interrupted_submitting_item():
     store = Store()
     store.items[0]["status"] = "submitting"
@@ -197,3 +243,26 @@ def test_reconciliation_recovers_interrupted_submitting_item():
     assert summary["checked"] == 1
     assert store.items[0]["status"] == "active"
     assert store.items[0]["steam_listing_id"] == "listing-recovered"
+
+
+def test_reconciliation_runner_serializes_manual_and_scheduled_runs():
+    class Service:
+        def __init__(self):
+            self.active = 0
+            self.maximum = 0
+
+        def reconcile(self):
+            self.active += 1
+            self.maximum = max(self.maximum, self.active)
+            time.sleep(0.03)
+            self.active -= 1
+            return {"checked": 0}
+
+    service = Service()
+    runner = ListingReconciliationRunner(service)  # type: ignore[arg-type]
+
+    async def run_twice():
+        return await asyncio.gather(runner.reconcile_now(), runner.reconcile_now())
+
+    assert asyncio.run(run_twice()) == [{"checked": 0}, {"checked": 0}]
+    assert service.maximum == 1

@@ -36,7 +36,7 @@ class ExternalSaleLedger(Protocol):
 
 
 class ListingReconciliationService:
-    _MISSING_CONFIRMATION_GRACE_MS = 30_000
+    _MISSING_UNCERTAIN_GRACE_MS = 30_000
 
     def __init__(
         self,
@@ -114,15 +114,25 @@ class ListingReconciliationService:
                     self._store.mark_checked(item["id"], now, type(error).__name__)
                     summary["errors"] += 1
             elif status.status == "cancelled":
-                missing_confirmation = (
+                missing_uncertain = (
                     (status.external_ref or "").startswith("steam:market-missing:")
-                    and item.get("status") in {"submitting", "pending_confirmation"}
+                    and item.get("status") == "pending_reconciliation"
                 )
-                if missing_confirmation:
-                    created_at = int(item.get("request_created_at") or 0)
-                    if created_at and now - created_at < self._MISSING_CONFIRMATION_GRACE_MS:
+                if missing_uncertain:
+                    submitted_at = int(
+                        item.get("submission_started_at") or item.get("request_created_at") or 0
+                    )
+                    if submitted_at and now - submitted_at < self._MISSING_UNCERTAIN_GRACE_MS:
                         self._store.mark_checked(item["id"], now)
                         continue
+                if (
+                    (status.external_ref or "").startswith("steam:market-missing:")
+                    and item.get("status") == "pending_confirmation"
+                ):
+                    # Steam's market pages do not expose mobile confirmations. Absence is
+                    # not proof of cancellation, so retain the explicit submit response.
+                    self._store.mark_checked(item["id"], now)
+                    continue
                 self._store.mark_cancelled(item["id"], now)
                 summary["cancelled"] += 1
             elif status.status == "active":

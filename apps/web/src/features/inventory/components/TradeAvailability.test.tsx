@@ -63,4 +63,24 @@ describe('TradeAvailability', () => {
     })
     expect(screen.getByText('在售 8')).toBeInTheDocument()
   })
+
+  it('renders pending submission separately from actual Steam listings', () => {
+    const { container } = render(
+      <TradeAvailability
+        group={group({
+          total_quantity: 20,
+          available_quantity: 8,
+          pending_listing_quantity: 7,
+          listed_quantity: 5,
+        })}
+        now={Date.UTC(2026, 7, 17, 1, 0)}
+      />,
+    )
+
+    expect(container.querySelector('.trade-availability')).toHaveStyle({
+      '--pending-share': '35%',
+      '--listed-share': '25%',
+    })
+    expect(screen.getByText('待确认 7')).toBeInTheDocument()
+  })
 })
