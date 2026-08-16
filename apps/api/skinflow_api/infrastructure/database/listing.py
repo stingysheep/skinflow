@@ -474,6 +474,17 @@ class SqliteListingRepository:
                     decision["assetid"],
                 ),
             )
+            if status in {"pending_confirmation", "active", "pending_reconciliation"}:
+                self._connection.execute(
+                    "UPDATE inventory_asset SET status='listed' WHERE "
+                    "platform=? AND appid=? AND contextid=? AND assetid=?",
+                    (
+                        decision["platform"],
+                        decision["appid"],
+                        decision["contextid"],
+                        decision["assetid"],
+                    ),
+                )
 
     def complete_request(self, request_id: str) -> dict:
         with self._lock, self._connection:

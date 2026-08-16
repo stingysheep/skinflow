@@ -1,17 +1,19 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { ApiError } from '../../../shared/api/client'
-import { getInventory, createListingPreview, refreshInventory } from '../api/inventoryApi'
+import { getInventory, createListingPreview, refreshInventory, submitListing } from '../api/inventoryApi'
 import { InventoryPage } from './InventoryPage'
 
 vi.mock('../api/inventoryApi', () => ({
   createListingPreview: vi.fn(),
   getInventory: vi.fn(),
   refreshInventory: vi.fn(),
+  submitListing: vi.fn(),
 }))
 
 const mockedGetInventory = vi.mocked(getInventory)
 const mockedCreatePreview = vi.mocked(createListingPreview)
 const mockedRefreshInventory = vi.mocked(refreshInventory)
+const mockedSubmitListing = vi.mocked(submitListing)
 
 describe('InventoryPage listing preview regression', () => {
   beforeEach(() => {
@@ -33,6 +35,11 @@ describe('InventoryPage listing preview regression', () => {
     })
     mockedCreatePreview.mockRejectedValue(new ApiError('没有当前 Steam 行情快照', 409, 'CONFLICT'))
     mockedRefreshInventory.mockResolvedValue({ asset_count: 0, observed_at: Date.now() })
+    mockedSubmitListing.mockResolvedValue({
+      id: 'request-1',
+      status: 'submitted',
+      items: [{ status: 'pending_confirmation' }],
+    } as Awaited<ReturnType<typeof submitListing>>)
   })
 
   it('shows a visible error when preview creation is rejected', async () => {
@@ -98,6 +105,97 @@ describe('InventoryPage listing preview regression', () => {
     fireEvent.click(screen.getByRole('button', { name: '刷新库存' }))
     await waitFor(() => expect(screen.getByRole('button', { name: '预览挂单' })).toBeDisabled())
     expect(screen.queryByText('所选资产已失效')).not.toBeInTheDocument()
+  })
+
+  it('clears the submitted selection and removes a fully listed group from tradable holdings', async () => {
+    mockedGetInventory.mockReset()
+    mockedGetInventory
+      .mockResolvedValueOnce({
+        status: 'ready',
+        items: [],
+        groups: [{
+          market_hash_name: 'AK-47 | Slate', display_name: 'AK-47 | 板岩', image_url: '',
+          total_quantity: 1, available_quantity: 1, listed_quantity: 0,
+          marketable_quantity: 1, tradable_quantity: 1, held_quantity: 1,
+        }],
+      })
+      .mockResolvedValueOnce({
+        status: 'ready',
+        items: [],
+        groups: [{
+          market_hash_name: 'AK-47 | Slate', display_name: 'AK-47 | 板岩', image_url: '',
+          total_quantity: 1, available_quantity: 0, listed_quantity: 1,
+          marketable_quantity: 0, tradable_quantity: 0, held_quantity: 1,
+        }],
+      })
+    mockedCreatePreview.mockResolvedValue({
+      id: 'preview-1',
+      status: 'ready',
+      expires_at: Date.now() + 60_000,
+      items: [{
+        id: 'preview-item-1', market_hash_name: 'AK-47 | Slate',
+        display_name: 'AK-47 | 板岩', image_url: '', assetid: '1001',
+        buyer_pays: 100, steam_fee: 5, publisher_fee: 10,
+        seller_proceeds: 85, cost_each: 50, ratio_ppm: 588_235,
+      }],
+    })
+
+    render(<InventoryPage />)
+    fireEvent.change(screen.getByRole('combobox', { name: '库存范围' }), { target: { value: 'held' } })
+    fireEvent.change(screen.getByRole('combobox', { name: '交易状态' }), { target: { value: 'tradable' } })
+    const selection = await screen.findByRole('checkbox', { name: '选择 AK-47 | 板岩' })
+    fireEvent.click(selection)
+    fireEvent.click(screen.getByRole('button', { name: '预览挂单' }))
+    fireEvent.click(await screen.findByRole('button', { name: '确认并提交' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: '预览挂单' })).toBeDisabled()
+    await waitFor(() => expect(screen.queryByText('AK-47 | 板岩')).not.toBeInTheDocument())
+  })
+
+  it('unchecks the submitted group when other tradable copies remain', async () => {
+    mockedGetInventory.mockReset()
+    mockedGetInventory
+      .mockResolvedValueOnce({
+        status: 'ready',
+        items: [],
+        groups: [{
+          market_hash_name: 'AK-47 | Slate', display_name: 'AK-47 | 板岩', image_url: '',
+          total_quantity: 2, available_quantity: 2, listed_quantity: 0,
+          marketable_quantity: 2, tradable_quantity: 2, held_quantity: 2,
+        }],
+      })
+      .mockResolvedValueOnce({
+        status: 'ready',
+        items: [],
+        groups: [{
+          market_hash_name: 'AK-47 | Slate', display_name: 'AK-47 | 板岩', image_url: '',
+          total_quantity: 2, available_quantity: 1, listed_quantity: 1,
+          marketable_quantity: 1, tradable_quantity: 1, held_quantity: 2,
+        }],
+      })
+    mockedCreatePreview.mockResolvedValue({
+      id: 'preview-1',
+      status: 'ready',
+      expires_at: Date.now() + 60_000,
+      items: [{
+        id: 'preview-item-1', market_hash_name: 'AK-47 | Slate',
+        display_name: 'AK-47 | 板岩', image_url: '', assetid: '1001',
+        buyer_pays: 100, steam_fee: 5, publisher_fee: 10,
+        seller_proceeds: 85, cost_each: 50, ratio_ppm: 588_235,
+      }],
+    })
+
+    render(<InventoryPage />)
+    const selection = await screen.findByRole('checkbox', { name: '选择 AK-47 | 板岩' })
+    fireEvent.click(selection)
+    fireEvent.click(screen.getByRole('button', { name: '预览挂单' }))
+    fireEvent.click(await screen.findByRole('button', { name: '确认并提交' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(selection).not.toBeChecked())
+    expect(screen.getByRole('button', { name: '预览挂单' })).toBeDisabled()
+    expect(screen.getByText('AK-47 | 板岩')).toBeInTheDocument()
   })
 
   it('shows recorded holdings even when Steam no longer returns the asset', async () => {

@@ -35,7 +35,7 @@ class Gateway:
         return self.result
 
 
-def test_cancel_route_reconciles_missing_listing_ids_before_cancelling() -> None:
+def test_cancel_route_skips_slow_reconciliation_when_listing_ids_are_ready() -> None:
     events: list[str] = []
 
     class Service:
@@ -55,7 +55,48 @@ def test_cancel_route_reconciles_missing_listing_ids_before_cancelling() -> None
         response = client.post("/api/listing-requests/cancel", json={"item_ids": ["item-1"]})
 
     assert response.status_code == 200
-    assert events == ["reconcile", "cancel"]
+    assert events == ["cancel"]
+
+
+def test_cancel_route_reconciles_and_retries_only_missing_listing_ids() -> None:
+    events: list[str] = []
+
+    class Service:
+        calls = 0
+
+        def cancel_items(self, item_ids: tuple[str, ...]) -> dict:
+            events.append("cancel")
+            self.calls += 1
+            if self.calls == 1:
+                return {
+                    "items": [{
+                        "id": item_ids[0],
+                        "status": "failed",
+                        "message": "STEAM_LISTING_ID_MISSING",
+                    }]
+                }
+            return {
+                "items": [{
+                    "id": item_ids[0],
+                    "status": "cancelled",
+                    "message": None,
+                }]
+            }
+
+    class Reconciler:
+        async def reconcile_now(self) -> dict:
+            events.append("reconcile")
+            return {"checked": 1}
+
+    app = FastAPI()
+    app.include_router(create_listing_router(Service(), Reconciler()))  # type: ignore[arg-type]
+
+    with TestClient(app) as client:
+        response = client.post("/api/listing-requests/cancel", json={"item_ids": ["item-1"]})
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["status"] == "cancelled"
+    assert events == ["cancel", "reconcile", "cancel"]
 
 
 def _seed(path: Path) -> tuple[SqliteListingRepository, str]:
@@ -88,6 +129,7 @@ def test_listing_preview_and_idempotent_submit(tmp_path: Path) -> None:
     assert first["status"] == "submitted"
     assert second["replayed"] is True
     assert gateway.calls == 1
+    assert SqliteInventoryRepository(tmp_path / "listing.db").list_assets()[0]["status"] == "listed"
 
 
 def test_buyer_paid_price_is_converted_to_steam_seller_price_before_submit(
@@ -193,14 +235,14 @@ def test_reconciliation_backfills_steam_id_for_existing_active_item(tmp_path: Pa
     assert current["items"][0]["steam_listing_id"] == "listing-backfilled"
 
 
-def test_listing_blocks_active_asset(tmp_path: Path) -> None:
+def test_listing_blocks_submitted_asset(tmp_path: Path) -> None:
     repository, assetid = _seed(tmp_path / "listing.db")
     service = ListingService(
         repository, repository, Gateway(ListingGatewayResult(True, False, "1", None))
     )
     preview = service.create_preview((ListingSelection("steam", 730, "2", assetid),))
     service.submit(preview["id"], "key-one")
-    with pytest.raises(ValueError, match="active listing"):
+    with pytest.raises(ValueError, match="not available"):
         service.create_preview((ListingSelection("steam", 730, "2", assetid),))
 
 

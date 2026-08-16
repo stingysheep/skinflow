@@ -52,10 +52,16 @@ export function InventoryPage() {
 
   const groups = useMemo(() => normalizeGroups(data), [data])
   useEffect(() => {
-    const names = new Set(groups.map((group) => group.market_hash_name))
+    const tradableByName = new Map(groups.map((group) => [group.market_hash_name, group.tradable_quantity]))
     setQuantities((current) => {
-      const next = new Map([...current].filter(([name]) => names.has(name)))
-      return next.size === current.size ? current : next
+      const next = new Map<string, number>()
+      let changed = false
+      for (const [name, quantity] of current) {
+        const normalized = Math.min(quantity, tradableByName.get(name) ?? 0)
+        if (normalized > 0) next.set(name, normalized)
+        if (normalized !== quantity) changed = true
+      }
+      return changed ? next : current
     })
   }, [groups])
   const visibleGroups = useMemo(() => {
@@ -159,6 +165,11 @@ export function InventoryPage() {
   }
 
   const selectedCount = [...quantities.values()].reduce((sum, quantity) => sum + quantity, 0)
+  function handleSubmitted() {
+    setQuantities(new Map())
+    setPreview(null)
+    void load()
+  }
   return (
     <div className="inventory-studio">
       <header className="module-header">
@@ -195,7 +206,7 @@ export function InventoryPage() {
       {!error && !loading && data?.status === 'session_required' ? <FeedbackState kind="empty" title="Steam 会话未连接" description="请从设置页连接 Steam。行情扫描仍然可以匿名使用。" /> : null}
       {!error && !loading && data?.status === 'ready' && visibleGroups.length ? <InventoryGrid groups={visibleGroups} quantities={quantities} expandedName={expandedName} details={groupDetails} detailLoading={detailLoading} detailErrors={detailErrors} onExpand={toggleDetails} onQuantityChange={setQuantity} /> : null}
       {!error && !loading && data?.status === 'ready' && !visibleGroups.length ? <FeedbackState kind="empty" title="没有匹配的物品" description="尝试切换筛选或清空搜索条件。" /> : null}
-      <ListingPreviewDialog preview={preview} open={previewOpen} onOpenChange={setPreviewOpen} onSubmitted={load} />
+      <ListingPreviewDialog preview={preview} open={previewOpen} onOpenChange={setPreviewOpen} onSubmitted={handleSubmitted} />
     </div>
   )
 }
