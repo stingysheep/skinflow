@@ -1,5 +1,6 @@
 import sqlite3
 from pathlib import Path
+from threading import Event, Thread
 
 import pytest
 
@@ -152,6 +153,57 @@ def test_listing_preview_fetches_missing_steam_snapshot(tmp_path: Path) -> None:
     preview = service.create_preview((ListingSelection("steam", 730, "2", assetid),))
     assert preview["items"][0]["market_snapshot_id"]
     assert preview["items"][0]["buyer_pays"] > 0
+
+
+def test_listing_preview_does_not_wait_for_advisory_trend_refresh(tmp_path: Path) -> None:
+    repository, assetid = _seed(tmp_path / "listing-trend-refresh.db")
+    started = Event()
+    completed = Event()
+    release = Event()
+
+    class SlowTrendProvider:
+        def refresh_trend(self, _market_hash_name):
+            started.set()
+            release.wait(2)
+
+        def fetch(self, context):
+            snapshot = MarketSnapshot(
+                context.asset.market_hash_name, None, None, 2000, None, "CNY", 730,
+                (MarketTier(MarketSide.STEAM_ASK, 230, 2),), "steam-cs2-cny-v1",
+            )
+            snapshot_id, job_id = repository.save_listing_snapshot(snapshot)
+            return ListingMarketSnapshot(
+                snapshot, snapshot_id, job_id, snapshot.for_side(MarketSide.STEAM_ASK)
+            )
+
+    service = ListingService(
+        repository,
+        repository,
+        Gateway(ListingGatewayResult(True, False, "1", None)),
+        SlowTrendProvider(),
+    )
+    result: list[dict] = []
+
+    def create_preview():
+        try:
+            result.append(service.create_preview((ListingSelection("steam", 730, "2", assetid),)))
+        finally:
+            completed.set()
+
+    worker = Thread(
+        target=create_preview,
+        daemon=True,
+    )
+    worker.start()
+    try:
+        assert started.wait(1)
+        assert completed.wait(1)
+        worker.join(1)
+        assert not worker.is_alive()
+        assert result[0]["items"][0]["buyer_pays"] > 0
+    finally:
+        release.set()
+        worker.join(1)
 
 
 def test_listing_repository_migrates_old_preview_item_schema(tmp_path: Path) -> None:

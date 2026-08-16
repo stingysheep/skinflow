@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from contextlib import suppress
 from dataclasses import replace
+from threading import Thread
 
 from skinflow_api.domain.listing import ListingDecision
 from skinflow_api.domain.listing.errors import InvalidListing
@@ -192,10 +193,15 @@ class ListingService:
             raise InvalidListing(f"asset {selection.assetid} already has an active listing")
         refresh_trend = getattr(self._market_snapshot_provider, "refresh_trend", None)
         if refresh_trend is not None:
-            with suppress(Exception):
-                refresh_trend(context.asset.market_hash_name)
-                # Trend history is advisory; listing preview still uses the
-                # live Steam order book and must not fail because chart data is unavailable.
+            # Trend history is advisory. Run the potentially slow upstream
+            # refresh in the background so preview latency is bounded by the
+            # live Steam order-book request instead.
+            Thread(
+                target=self._refresh_trend,
+                args=(refresh_trend, context.asset.market_hash_name),
+                daemon=True,
+                name="skinflow-listing-trend",
+            ).start()
         if context.snapshot_id is None or context.snapshot_job_id is None or not context.asks:
             if self._market_snapshot_provider is None:
                 raise InvalidListing("STEAM_SNAPSHOT_REQUIRED")
@@ -244,6 +250,11 @@ class ListingService:
             ratio,
             policy.version,
         )
+
+    @staticmethod
+    def _refresh_trend(refresh_trend, market_hash_name: str) -> None:
+        with suppress(Exception):
+            refresh_trend(market_hash_name)
 
     @staticmethod
     def _uncertain_result(message: str):
