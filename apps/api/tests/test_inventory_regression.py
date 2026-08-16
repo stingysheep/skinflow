@@ -45,13 +45,13 @@ def empty_page() -> dict:
     return {"success": 1, "assets": [], "descriptions": [], "more_items": 0}
 
 
-def test_inventory_retries_rate_limit_then_reads_both_contexts() -> None:
-    client = SequenceClient([RateLimited(), empty_page(), empty_page()])
+def test_inventory_retries_rate_limit_then_reads_owned_context() -> None:
+    client = SequenceClient([RateLimited(), empty_page()])
     delays: list[float] = []
     adapter = SteamInventoryAdapter(active_session(), client, sleep=delays.append)
 
     assert adapter.fetch_inventory() == ()
-    assert client.calls == 3
+    assert client.calls == 2
     assert delays == [2.0]
 
 
@@ -80,7 +80,6 @@ def test_inventory_continues_pagination_after_page_without_marketable_assets() -
                 ],
                 "more_items": 0,
             },
-            empty_page(),
         ]
     )
     adapter = SteamInventoryAdapter(active_session(), client, sleep=lambda _delay: None)
@@ -88,7 +87,7 @@ def test_inventory_continues_pagination_after_page_without_marketable_assets() -
     assets = adapter.fetch_inventory()
 
     assert [item.assetid for item in assets] == ["42"]
-    assert client.calls == 3
+    assert client.calls == 2
 
 
 def test_inventory_exhausted_rate_limit_has_structured_retry_after() -> None:

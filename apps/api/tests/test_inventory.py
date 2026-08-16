@@ -62,6 +62,27 @@ def test_inventory_parser_joins_assets_and_descriptions() -> None:
     assert items[0].wear_text == "略有磨损"
 
 
+def test_inventory_parser_uses_asset_context_instead_of_requested_context() -> None:
+    items = parse_inventory_page(
+        {
+            "assets": [
+                {"assetid": "1", "contextid": "2", "classid": "9", "instanceid": "0"}
+            ],
+            "descriptions": [
+                {
+                    "classid": "9",
+                    "instanceid": "0",
+                    "market_hash_name": "AWP | Asiimov",
+                    "name": "AWP | Asiimov",
+                }
+            ],
+        },
+        "16",
+    )
+
+    assert items[0].contextid == "2"
+
+
 def test_inventory_sync_preserves_missing_assets(tmp_path: Path) -> None:
     repository = SqliteInventoryRepository(tmp_path / "inventory.db")
     repository.sync((asset("first"), asset("second", "16")))

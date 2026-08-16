@@ -18,7 +18,7 @@ from .session import InMemorySteamSession
 
 COMMUNITY_URL = "https://steamcommunity.com"
 IMAGE_URL = "https://community.cloudflare.steamstatic.com/economy/image/"
-CONTEXT_IDS = ("2", "16")
+CONTEXT_IDS = ("2",)
 MAX_PAGES_PER_CONTEXT = 20
 RETRY_DELAYS_SECONDS = (2.0, 4.0, 8.0)
 
@@ -40,7 +40,8 @@ def parse_inventory_page(data: dict, contextid: str) -> tuple[InventoryAsset, ..
             continue
         name = str(description.get("market_hash_name") or "")
         assetid = str(row.get("assetid") or "")
-        if not name or not assetid:
+        asset_contextid = str(row.get("contextid") or contextid)
+        if not name or not assetid or not asset_contextid:
             continue
         owner_lines = description.get("owner_descriptions") or []
         hold_text = (
@@ -57,7 +58,7 @@ def parse_inventory_page(data: dict, contextid: str) -> tuple[InventoryAsset, ..
             InventoryAsset(
                 platform="steam",
                 appid=730,
-                contextid=contextid,
+                contextid=asset_contextid,
                 assetid=assetid,
                 market_hash_name=name,
                 display_name=str(description.get("name") or name),
