@@ -16,7 +16,12 @@ from skinflow_api.domain.pricing import (
     steam_cny_policy,
 )
 
-from .models import MAX_LISTING_PREVIEW_ASSETS, ListingGroupSelection, ListingSelection
+from .models import (
+    MAX_LISTING_PREVIEW_ASSETS,
+    ListingGroupSelection,
+    ListingMarketSnapshot,
+    ListingSelection,
+)
 from .ports import ListingCatalog, ListingGateway, ListingMarketSnapshotProvider, ListingPersistence
 
 
@@ -43,7 +48,8 @@ class ListingService:
         }
         if len(identities) != len(selections):
             raise InvalidListing("duplicate assets are not allowed")
-        decisions = tuple(self._decision(selection) for selection in selections)
+        fresh_markets: dict[str, ListingMarketSnapshot] = {}
+        decisions = tuple(self._decision(selection, fresh_markets) for selection in selections)
         return self._persistence.create_preview(decisions, int(time.time() * 1000) + 300_000)
 
     def create_grouped_preview(
@@ -195,7 +201,11 @@ class ListingService:
                 )
         return {"items": results}
 
-    def _decision(self, selection: ListingSelection) -> ListingDecision:
+    def _decision(
+        self,
+        selection: ListingSelection,
+        fresh_markets: dict[str, ListingMarketSnapshot],
+    ) -> ListingDecision:
         context = self._catalog.context_for(selection)
         if context is None:
             raise InvalidListing(f"asset {selection.assetid} is not available")
@@ -214,32 +224,40 @@ class ListingService:
                 daemon=True,
                 name="skinflow-listing-trend",
             ).start()
-        if context.snapshot_id is None or context.snapshot_job_id is None or not context.asks:
-            if self._market_snapshot_provider is None:
-                raise InvalidListing("STEAM_SNAPSHOT_REQUIRED")
-            try:
-                market = self._market_snapshot_provider.fetch(context)
-            except Exception as error:
-                raise InvalidListing("STEAM_SNAPSHOT_UNAVAILABLE") from error
+        market: ListingMarketSnapshot | None = None
+        if self._market_snapshot_provider is not None:
+            market = fresh_markets.get(context.asset.market_hash_name)
+            if market is None:
+                try:
+                    market = self._market_snapshot_provider.fetch(context)
+                except Exception as error:
+                    raise InvalidListing("STEAM_SNAPSHOT_UNAVAILABLE") from error
+                fresh_markets[context.asset.market_hash_name] = market
             context = replace(
                 context,
                 snapshot_id=market.snapshot_id,
                 snapshot_job_id=market.snapshot_job_id,
                 asks=market.asks,
             )
-        if not context.asks:
+        if not context.asks and not (market and market.bids):
             raise InvalidListing("STEAM_SNAPSHOT_UNAVAILABLE")
         policy = steam_cny_policy()
-        buyer_pays = selection.buyer_pays or recommend_listing_price(
-            lowest_ask=context.asks[0].price,
-            price_tick=1,
-            fee_policy=policy,
-            requested_qty=1,
-            ask_levels=tuple(Tier(item.price, item.quantity) for item in context.asks),
-            min_price=1,
-            daily_volume=None,
-        ).recommended_price
-        fees = calculate_net(buyer_pays, policy)
+        if selection.buyer_pays is not None:
+            fees = _fee_breakdown_for_buyer_pays(selection.buyer_pays, policy)
+        elif market and market.bids:
+            fees = _fee_breakdown_for_buyer_pays(max(item.price for item in market.bids), policy)
+        else:
+            buyer_pays = recommend_listing_price(
+                lowest_ask=context.asks[0].price,
+                price_tick=1,
+                fee_policy=policy,
+                requested_qty=1,
+                ask_levels=tuple(Tier(item.price, item.quantity) for item in context.asks),
+                min_price=1,
+                daily_volume=None,
+            ).recommended_price
+            fees = calculate_net(buyer_pays, policy)
+        buyer_pays = fees.buyer_pays
         cost_each = selection.cost_each if selection.cost_each is not None else context.cost_each
         ratio = (
             cost_each * 1_000_000 // fees.seller_proceeds

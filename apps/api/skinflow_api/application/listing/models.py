@@ -46,6 +46,7 @@ class ListingMarketSnapshot:
     snapshot_id: str
     snapshot_job_id: str
     asks: tuple[MarketTier, ...]
+    bids: tuple[MarketTier, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

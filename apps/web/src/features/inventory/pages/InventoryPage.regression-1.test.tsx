@@ -110,6 +110,7 @@ describe('InventoryPage listing preview regression', () => {
         image_url: '',
         total_quantity: 0,
         available_quantity: 0,
+        listed_quantity: 0,
         marketable_quantity: 0,
         tradable_quantity: 0,
         held_quantity: 2,
@@ -131,12 +132,12 @@ describe('InventoryPage listing preview regression', () => {
       groups: [
         {
           market_hash_name: 'P90 | Tradable', display_name: 'P90 | 可交易', image_url: '',
-          total_quantity: 23, available_quantity: 23, marketable_quantity: 23,
+          total_quantity: 23, available_quantity: 23, listed_quantity: 0, marketable_quantity: 23,
           tradable_quantity: 23, held_quantity: 23,
         },
         {
           market_hash_name: 'Sawed-Off | Cooldown', display_name: '截短霰弹枪 | 冷却中', image_url: '',
-          total_quantity: 19, available_quantity: 19, marketable_quantity: 0,
+          total_quantity: 19, available_quantity: 19, listed_quantity: 0, marketable_quantity: 0,
           tradable_quantity: 0, held_quantity: 19,
           cooldown_batches: [{ tradable_after: Date.now() + 60_000, quantity: 19 }],
         },
@@ -154,6 +155,31 @@ describe('InventoryPage listing preview regression', () => {
     fireEvent.change(screen.getByRole('combobox', { name: '交易状态' }), { target: { value: 'tradable' } })
     expect(screen.getByText('P90 | 可交易')).toBeInTheDocument()
     expect(screen.queryByText('截短霰弹枪 | 冷却中')).not.toBeInTheDocument()
+  })
+
+  it('filters Steam-listed holdings separately from cooldown inventory', async () => {
+    mockedGetInventory.mockResolvedValue({
+      status: 'ready',
+      items: [],
+      groups: [{
+        market_hash_name: 'FAMAS | Grey Ghost (Factory New)',
+        display_name: '法玛斯 | 灰色幽灵',
+        image_url: '',
+        total_quantity: 5,
+        available_quantity: 0,
+        listed_quantity: 5,
+        marketable_quantity: 0,
+        tradable_quantity: 0,
+        held_quantity: 5,
+      }],
+    })
+
+    render(<InventoryPage />)
+    fireEvent.change(screen.getByRole('combobox', { name: '交易状态' }), { target: { value: 'listed' } })
+
+    expect(await screen.findByText('法玛斯 | 灰色幽灵')).toBeInTheDocument()
+    expect(screen.getByText('在售 5')).toBeInTheDocument()
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
   it('synchronizes Steam inventory periodically so trade status changes appear', async () => {
@@ -179,7 +205,7 @@ describe('InventoryPage listing preview regression', () => {
     mockedGetInventory.mockResolvedValue({
       status: 'ready',
       items: [],
-      groups: [{ market_hash_name: 'AK-47 | Slate', display_name: 'AK-47 | 板岩', image_url: '', total_quantity: 5, available_quantity: 5, marketable_quantity: 5, tradable_quantity: 5 }],
+      groups: [{ market_hash_name: 'AK-47 | Slate', display_name: 'AK-47 | 板岩', image_url: '', total_quantity: 5, available_quantity: 5, listed_quantity: 0, marketable_quantity: 5, tradable_quantity: 5 }],
     })
     render(<InventoryPage />)
     fireEvent.change(screen.getByRole('combobox', { name: '库存范围' }), { target: { value: 'all' } })

@@ -45,6 +45,30 @@ class Client:
         return self.history if "myhistory" in url else self.active
 
 
+class PagedHistoryClient(Client):
+    def __init__(self) -> None:
+        super().__init__(
+            active={"success": True, "total_count": 0, "results_html": "", "hovers": ""},
+            history={},
+        )
+        self.calls: list[str] = []
+
+    def request_json(self, url, *, headers=None):
+        self.calls.append(url)
+        if "mylistings" in url:
+            return self.active
+        if "start=0" in url:
+            return {"success": True, "total_count": 201, "results_html": "", "hovers": ""}
+        if "start=100" in url:
+            return {
+                "success": True,
+                "total_count": 201,
+                "results_html": SOLD_HTML,
+                "hovers": SOLD_HOVERS,
+            }
+        return {"success": True, "total_count": 201, "results_html": "", "hovers": ""}
+
+
 def session() -> InMemorySteamSession:
     value = InMemorySteamSession()
     value.set_credentials(SteamCredentials("76561198000000000", "secure", "session"))
@@ -116,7 +140,7 @@ def test_status_adapter_marks_missing_listing_as_cancelled_after_successful_sync
     assert status.status == "cancelled"
 
 
-def test_status_adapter_does_not_cancel_missing_listing_when_history_is_paginated() -> None:
+def test_status_adapter_cancels_missing_listing_after_paging_complete_history() -> None:
     adapter = SteamListingStatusAdapter(
         session(),
         Client(
@@ -125,7 +149,17 @@ def test_status_adapter_does_not_cancel_missing_listing_when_history_is_paginate
         ),
     )
 
-    assert adapter.statuses(("asset-1",)) == {}
+    assert adapter.statuses(("asset-1",))["asset-1"].status == "cancelled"
+
+
+def test_status_adapter_pages_history_until_sold_listing_is_found() -> None:
+    client = PagedHistoryClient()
+    adapter = SteamListingStatusAdapter(session(), client)
+
+    status = adapter.statuses(("asset-1",))["asset-1"]
+
+    assert status.status == "sold"
+    assert any("start=100" in url and "myhistory" in url for url in client.calls)
 
 
 def test_market_timestamp_uses_local_year_for_chinese_steam_date() -> None:

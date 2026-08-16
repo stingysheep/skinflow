@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Boxes, ListPlus, RefreshCw, Search } from 'lucide-react'
+import { Boxes, ExternalLink, ListPlus, RefreshCw, Search } from 'lucide-react'
 import { Button, FeedbackState } from '../../../shared/components'
 import { ApiError } from '../../../shared/api/client'
 import { createListingPreview, getInventory, getInventoryGroupDetails, refreshInventory } from '../api/inventoryApi'
@@ -16,7 +16,7 @@ import {
 import '../inventory.css'
 
 type InventoryScope = 'all' | 'held'
-type InventoryTradeFilter = 'all' | 'tradable' | 'cooldown'
+type InventoryTradeFilter = 'all' | 'tradable' | 'cooldown' | 'listed'
 const INVENTORY_REFRESH_INTERVAL_MS = 60_000
 
 export function InventoryPage() {
@@ -65,6 +65,7 @@ export function InventoryPage() {
       const matchesFilter = tradeFilter === 'all'
         || (tradeFilter === 'tradable' && group.tradable_quantity > 0)
         || (tradeFilter === 'cooldown' && Math.max(0, group.available_quantity - group.tradable_quantity) > 0)
+        || (tradeFilter === 'listed' && (group.listed_quantity ?? 0) > 0)
       const matchesQuery = !normalizedQuery || `${group.display_name} ${group.market_hash_name}`
         .toLocaleLowerCase()
         .includes(normalizedQuery)
@@ -182,6 +183,7 @@ export function InventoryPage() {
           <option value="all">全部状态</option>
           <option value="tradable">可交易</option>
           <option value="cooldown">冷却中</option>
+          <option value="listed">在售</option>
         </select>
         <span>{visibleGroups.length} 组 · 已选 {selectedCount} 件</span>
         <div className="command-spacer" />
@@ -209,11 +211,13 @@ function normalizeGroups(data: InventoryResponse | null): InventoryGroup[] {
       image_url: item.image_url,
       total_quantity: 0,
       available_quantity: 0,
+      listed_quantity: 0,
       marketable_quantity: 0,
       tradable_quantity: 0,
     }
     current.total_quantity += 1
     if (item.status === 'available') current.available_quantity += 1
+    if (item.status === 'listed') current.listed_quantity += 1
     if (item.status === 'available' && item.marketable) current.marketable_quantity += 1
     if (item.status === 'available' && item.marketable && item.tradable) current.tradable_quantity += 1
     grouped.set(item.market_hash_name, current)
@@ -241,7 +245,7 @@ function InventoryGrid({ groups, quantities, expandedName, details, detailLoadin
 
   return (
       <div className="inventory-grid inventory-group-grid">
-      <div className="inventory-grid-head"><span>选择</span><span>物品组</span><span>可交易</span><span>移动均价</span><span>出售数量</span></div>
+      <div className="inventory-grid-head"><span>选择</span><span>物品组</span><span>交易状态</span><span>移动均价</span><span>出售数量</span><span>市场</span></div>
       {groups.map((group) => {
         const quantity = quantities.get(group.market_hash_name) ?? 0
         const max = group.tradable_quantity
@@ -251,10 +255,15 @@ function InventoryGrid({ groups, quantities, expandedName, details, detailLoadin
           <TradeAvailability group={group} now={now} />
           <code>{money(group.average_cost)}</code>
           <span className="quantity-stepper" onClick={(event) => event.stopPropagation()}><button type="button" onClick={() => onQuantityChange(group.market_hash_name, Math.max(0, quantity - 1))} aria-label={`减少 ${group.display_name}`}>−</button><QuantityInput value={quantity} max={max} label={group.display_name} onChange={(next) => onQuantityChange(group.market_hash_name, next)} /><button type="button" onClick={() => onQuantityChange(group.market_hash_name, Math.min(max, quantity + 1))} aria-label={`增加 ${group.display_name}`}>+</button></span>
+          <a className="market-link-icon" href={steamMarketUrl(group.market_hash_name)} target="_blank" rel="noreferrer" title="在 Steam 市场查看" aria-label={`在 Steam 市场查看 ${group.display_name}`} onClick={(event) => event.stopPropagation()}><ExternalLink size={15} aria-hidden="true" /></a>
         </div>{expandedName === group.market_hash_name ? <div className="inventory-detail-row"><InventoryGroupDetails details={details[group.market_hash_name] ?? null} loading={detailLoading === group.market_hash_name} error={detailErrors[group.market_hash_name] || null} /></div> : null}</Fragment>
       })}
     </div>
   )
+}
+
+function steamMarketUrl(marketHashName: string) {
+  return `https://steamcommunity.com/market/listings/730/${encodeURIComponent(marketHashName)}`
 }
 
 function QuantityInput({ value, max, label, onChange }: { value: number; max: number; label: string; onChange: (value: number) => void }) {

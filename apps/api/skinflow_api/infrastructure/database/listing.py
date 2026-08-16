@@ -544,6 +544,11 @@ class SqliteListingRepository:
                 "sold_receive_total=?,last_checked_at=?,reconcile_error=NULL WHERE id=?",
                 (sale_fill_id, sold_at, receive_total, int(time.time() * 1000), item_id),
             )
+            self._connection.execute(
+                "UPDATE inventory_asset SET status='sold' WHERE (platform,appid,contextid,assetid)="
+                "(SELECT platform,appid,contextid,assetid FROM listing_item WHERE id=?)",
+                (item_id,),
+            )
             self._refresh_request_status(item_id)
 
     def mark_cancelled(self, item_id: str, checked_at: int) -> None:
@@ -553,15 +558,30 @@ class SqliteListingRepository:
                 "reconcile_error=NULL WHERE id=?",
                 (checked_at, item_id),
             )
+            self._connection.execute(
+                "UPDATE inventory_asset SET status='missing' WHERE status='listed' AND "
+                "(platform,appid,contextid,assetid)="
+                "(SELECT platform,appid,contextid,assetid FROM listing_item WHERE id=?)",
+                (item_id,),
+            )
             self._refresh_request_status(item_id)
 
-    def mark_active(self, item_id: str, checked_at: int) -> None:
+    def mark_active(
+        self, item_id: str, checked_at: int, steam_listing_id: str | None = None
+    ) -> None:
         with self._lock, self._connection:
             self._connection.execute(
-                "UPDATE listing_item SET status='active',last_checked_at=?,"
-                "reconcile_error=NULL WHERE id=? AND status IN "
+                "UPDATE listing_item SET status='active',"
+                "steam_listing_id=COALESCE(?,steam_listing_id),"
+                "last_checked_at=?,reconcile_error=NULL WHERE id=? AND status IN "
                 "('pending_confirmation','pending_reconciliation')",
-                (checked_at, item_id),
+                (steam_listing_id, checked_at, item_id),
+            )
+            self._connection.execute(
+                "UPDATE inventory_asset SET status='listed' WHERE "
+                "(platform,appid,contextid,assetid)="
+                "(SELECT platform,appid,contextid,assetid FROM listing_item WHERE id=?)",
+                (item_id,),
             )
             self._connection.execute(
                 "UPDATE listing_request SET status='submitted' WHERE id=("

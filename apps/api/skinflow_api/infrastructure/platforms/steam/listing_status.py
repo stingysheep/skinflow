@@ -38,26 +38,21 @@ class SteamListingStatusAdapter:
             "Referer": "https://steamcommunity.com/market/",
         }
         try:
-            active = self._client.request_json(
-                f"{MY_LISTINGS_URL}?start=0&count=100&l=schinese&currency=23",
-                headers=headers,
+            result: dict[str, SteamListingStatus] = {}
+            wanted = set(listing_ids)
+            _, active_observed = self._fetch_pages(
+                MY_LISTINGS_URL, headers, wanted, result, "active"
             )
-            history = self._client.request_json(
-                f"{MY_HISTORY_URL}?start=0&count=100&l=schinese&currency=23",
-                headers=headers,
+            remaining = wanted.difference(result)
+            history_complete, history_observed = self._fetch_pages(
+                MY_HISTORY_URL, headers, remaining, result, "history"
             )
-            if not active.get("success", True) or not history.get("success", True):
-                raise UpstreamUnavailable("Steam market response rejected")
         except UpstreamUnavailable as error:
             if error.status_code in {401, 403}:
                 self._session.mark_expired()
                 raise PermissionError("Steam session expired") from error
             raise
-        result: dict[str, SteamListingStatus] = {}
-        wanted = set(listing_ids)
-        observed = _collect_statuses(result, wanted, active, "active")
-        observed.update(_collect_statuses(result, wanted, history, "history"))
-        history_complete = int(history.get("total_count") or 0) <= 100
+        observed = active_observed | history_observed
         for missing in wanted.difference(result).difference(observed) if history_complete else ():
             result[missing] = SteamListingStatus(
                 listing_id=missing,
@@ -65,6 +60,33 @@ class SteamListingStatusAdapter:
                 external_ref=f"steam:market-missing:{missing}",
             )
         return result
+
+    def _fetch_pages(
+        self,
+        endpoint: str,
+        headers: dict[str, str],
+        wanted: set[str],
+        result: dict[str, SteamListingStatus],
+        source: str,
+    ) -> tuple[bool, set[str]]:
+        if not wanted:
+            return True, set()
+        observed: set[str] = set()
+        start = 0
+        while True:
+            payload = self._client.request_json(
+                f"{endpoint}?start={start}&count=100&l=schinese&currency=23",
+                headers=headers,
+            )
+            if not payload.get("success", True):
+                raise UpstreamUnavailable("Steam market response rejected")
+            observed.update(_collect_statuses(result, wanted, payload, source))
+            if wanted.issubset(result):
+                return True, observed
+            total_count = int(payload.get("total_count") or 0)
+            if total_count <= start + 100:
+                return True, observed
+            start += 100
 
 
 @dataclass(slots=True)

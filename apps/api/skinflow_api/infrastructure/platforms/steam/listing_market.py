@@ -58,7 +58,8 @@ class SteamListingMarketSnapshotProvider:
         if snapshot.appid != 730 or snapshot.currency != "CNY":
             raise RuntimeError("STEAM_UNSUPPORTED_MARKET")
         asks = snapshot.for_side(MarketSide.STEAM_ASK)
-        if not asks:
+        bids = snapshot.for_side(MarketSide.STEAM_BID)
+        if not asks and not bids:
             raise RuntimeError("STEAM_ORDERBOOK_EMPTY")
         snapshot_id, job_id = self._store.save_listing_snapshot(snapshot)
-        return ListingMarketSnapshot(snapshot, snapshot_id, job_id, asks)
+        return ListingMarketSnapshot(snapshot, snapshot_id, job_id, asks, bids)

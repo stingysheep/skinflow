@@ -173,8 +173,9 @@ class SqliteInventoryRepository:
                 "FROM purchase_lot l LEFT JOIN sold s ON s.purchase_lot_id=l.id "
                 "WHERE l.quantity>COALESCE(s.quantity,0) GROUP BY l.market_hash_name), "
                 "asset_groups AS (SELECT market_hash_name,"
-                "SUM(CASE WHEN status='available' THEN 1 ELSE 0 END) total_quantity, "
+                "SUM(CASE WHEN status IN ('available','listed') THEN 1 ELSE 0 END) total_quantity, "
                 "SUM(CASE WHEN status='available' THEN 1 ELSE 0 END) available_quantity, "
+                "SUM(CASE WHEN status='listed' THEN 1 ELSE 0 END) listed_quantity, "
                 "SUM(CASE WHEN status='available' AND marketable=1 "
                 "THEN 1 ELSE 0 END) marketable_quantity, "
                 "SUM(CASE WHEN status='available' AND marketable=1 "
@@ -188,6 +189,7 @@ class SqliteInventoryRepository:
                 "COALESCE(NULLIF(m.display_name_zh,''),'中文名称待同步') localized_name, "
                 "COALESCE(m.image_url,'') image_url,COALESCE(a.total_quantity,0) total_quantity, "
                 "COALESCE(a.available_quantity,0) available_quantity, "
+                "COALESCE(a.listed_quantity,0) listed_quantity, "
                 "COALESCE(a.marketable_quantity,0) marketable_quantity, "
                 "COALESCE(a.tradable_quantity,0) tradable_quantity, "
                 "CASE WHEN c.quantity>0 THEN c.invested / c.quantity END average_cost, "
@@ -195,7 +197,7 @@ class SqliteInventoryRepository:
                 "FROM names n LEFT JOIN asset_groups a ON a.market_hash_name=n.market_hash_name "
                 "LEFT JOIN item_metadata m ON m.market_hash_name=n.market_hash_name "
                 "LEFT JOIN costs c ON c.market_hash_name=n.market_hash_name "
-                "WHERE COALESCE(a.available_quantity,0)>0 OR COALESCE(c.quantity,0)>0 "
+                "WHERE COALESCE(a.total_quantity,0)>0 OR COALESCE(c.quantity,0)>0 "
                 "ORDER BY localized_name,n.market_hash_name"
             ).fetchall()
             batch_rows = self._connection.execute(
@@ -223,6 +225,7 @@ class SqliteInventoryRepository:
                 "display_name": row["localized_name"],
                 "total_quantity": int(row["total_quantity"]),
                 "available_quantity": int(row["available_quantity"]),
+                "listed_quantity": int(row["listed_quantity"]),
                 "marketable_quantity": int(row["marketable_quantity"]),
                 "tradable_quantity": int(row["tradable_quantity"]),
                 "average_cost": (

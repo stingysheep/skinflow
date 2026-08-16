@@ -47,15 +47,52 @@ describe('ListingsPage', () => {
     vi.useRealTimers()
   })
 
-  it('refreshes listing status every 60 seconds', async () => {
+  it('refreshes listing status every 15 seconds', async () => {
     vi.useFakeTimers()
     render(<ListingsPage />)
     await act(async () => { await Promise.resolve() })
 
     expect(screen.getByText('AK-47 | 板岩')).toBeInTheDocument()
-    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
 
     expect(getListingRequests).toHaveBeenCalledTimes(2)
+  })
+
+  it('selects all cancellable assets through status and item-group parents', async () => {
+    render(<ListingsPage />)
+
+    const statusCheckbox = await screen.findByRole('checkbox', { name: '选择在售下所有可取消挂单' })
+    fireEvent.click(statusCheckbox)
+    expect(screen.getByRole('button', { name: '取消所选挂单' })).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: '展开 AK-47 | 板岩' }))
+    expect(screen.getByRole('checkbox', { name: '选择取消资产 asset-1' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: '选择AK-47 | 板岩下所有可取消挂单' })).toBeChecked()
+  })
+
+  it('renders status, item group, and asset levels in order', async () => {
+    render(<ListingsPage />)
+
+    expect(await screen.findByText('在售')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '展开 AK-47 | 板岩' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '展开 AK-47 | 板岩' }))
+    expect(screen.getByText('资产 asset-1')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: '选择在售下所有可取消挂单' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: '选择AK-47 | 板岩下所有可取消挂单' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: '选择取消资产 asset-1' })).toBeInTheDocument()
+  })
+
+  it('keeps grouped totals numeric when legacy rows omit buyer price', async () => {
+    vi.mocked(getListingRequests).mockResolvedValueOnce({ items: [{
+      ...request,
+      items: [{ ...request.items[0], id: 'item-closed', status: 'cancelled', steam_listing_id: null, buyer_pays: Number.NaN, seller_proceeds: Number.NaN }],
+    }] })
+
+    render(<ListingsPage />)
+
+    expect(await screen.findByText('已取消/失败')).toBeInTheDocument()
+    expect(screen.getAllByText('¥0.00').length).toBeGreaterThan(0)
+    expect(screen.queryByText('¥NaN')).not.toBeInTheDocument()
   })
 
   it('shows a retryable error when the initial request fails', async () => {

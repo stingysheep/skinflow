@@ -81,6 +81,73 @@ def test_buyer_paid_price_is_converted_to_steam_seller_price_before_submit(
     assert gateway.decisions[0]["seller_proceeds"] == 21
 
 
+def test_listing_preview_refreshes_live_book_and_uses_highest_bid(tmp_path: Path) -> None:
+    repository, assetid = _seed(tmp_path / "listing-live-book.db")
+    calls = 0
+
+    class Provider:
+        def fetch(self, context):
+            nonlocal calls
+            calls += 1
+            snapshot = MarketSnapshot(
+                context.asset.market_hash_name,
+                None,
+                None,
+                2000,
+                None,
+                "CNY",
+                730,
+                (
+                    MarketTier(MarketSide.STEAM_BID, 220, 2),
+                    MarketTier(MarketSide.STEAM_ASK, 230, 2),
+                ),
+                "steam-cs2-cny-v1",
+            )
+            snapshot_id, job_id = repository.save_listing_snapshot(snapshot)
+            return ListingMarketSnapshot(
+                snapshot,
+                snapshot_id,
+                job_id,
+                snapshot.for_side(MarketSide.STEAM_ASK),
+                snapshot.for_side(MarketSide.STEAM_BID),
+            )
+
+    service = ListingService(
+        repository,
+        repository,
+        Gateway(ListingGatewayResult(True, False, "1", None)),
+        Provider(),
+    )
+
+    preview = service.create_preview((ListingSelection("steam", 730, "2", assetid),))
+
+    assert calls == 1
+    assert preview["items"][0]["buyer_pays"] == 220
+    assert preview["items"][0]["bid_levels"][0]["price"] == 220
+
+
+def test_reconciliation_activation_persists_steam_id_and_inventory_status(
+    tmp_path: Path,
+) -> None:
+    repository, assetid = _seed(tmp_path / "listing-activation-state.db")
+    service = ListingService(
+        repository,
+        repository,
+        Gateway(ListingGatewayResult(True, True, None, None)),
+    )
+    preview = service.create_preview((ListingSelection("steam", 730, "2", assetid),))
+    request = service.submit(preview["id"], "activation-state-key")
+
+    repository.mark_active(request["items"][0]["id"], 2_000, "listing-real")
+
+    current = repository.get_request(request["id"])
+    inventory = SqliteInventoryRepository(tmp_path / "listing-activation-state.db")
+    assert current is not None
+    assert current["items"][0]["steam_listing_id"] == "listing-real"
+    assert current["items"][0]["status"] == "active"
+    assert inventory.list_assets()[0]["status"] == "listed"
+
+
 def test_listing_blocks_active_asset(tmp_path: Path) -> None:
     repository, assetid = _seed(tmp_path / "listing.db")
     service = ListingService(

@@ -26,7 +26,9 @@ class ListingReconciliationStore(Protocol):
         self, item_id: str, sale_fill_id: str, sold_at: int, receive_total: int
     ) -> None: ...
     def mark_cancelled(self, item_id: str, checked_at: int) -> None: ...
-    def mark_active(self, item_id: str, checked_at: int) -> None: ...
+    def mark_active(
+        self, item_id: str, checked_at: int, steam_listing_id: str | None = None
+    ) -> None: ...
 
 
 class ExternalSaleLedger(Protocol):
@@ -72,9 +74,17 @@ class ListingReconciliationService:
         summary = {"checked": 0, "sold": 0, "cancelled": 0, "errors": 0}
         for item in items:
             tracking_id = str(item.get("steam_listing_id") or item.get("assetid") or "")
-            status = statuses.get(str(item.get("steam_listing_id") or ""))
-            if status is None:
-                status = statuses.get(str(item.get("assetid") or ""))
+            listing_status = statuses.get(str(item.get("steam_listing_id") or ""))
+            asset_status = statuses.get(str(item.get("assetid") or ""))
+            listing_is_synthetic_missing = (
+                listing_status is not None
+                and (listing_status.external_ref or "").startswith("steam:market-missing:")
+            )
+            status = (
+                asset_status
+                if listing_is_synthetic_missing and asset_status is not None
+                else listing_status or asset_status
+            )
             if not tracking_id or status is None:
                 continue
             now = int(time.time() * 1000)
@@ -116,7 +126,7 @@ class ListingReconciliationService:
                 self._store.mark_cancelled(item["id"], now)
                 summary["cancelled"] += 1
             elif status.status == "active":
-                self._store.mark_active(item["id"], now)
+                self._store.mark_active(item["id"], now, status.listing_id)
             else:
                 self._store.mark_checked(item["id"], now)
         return summary

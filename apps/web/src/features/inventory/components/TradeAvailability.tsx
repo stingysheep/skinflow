@@ -5,13 +5,18 @@ import type { InventoryGroup } from '../model/types'
 export function TradeAvailability({ group, now }: { group: InventoryGroup; now: number }) {
   const tooltipId = useId()
   const available = Math.max(0, group.available_quantity)
+  const listed = Math.max(0, group.listed_quantity ?? 0)
   const tradable = Math.min(available, Math.max(0, group.tradable_quantity))
   const cooldown = Math.max(0, available - tradable)
   const hasCooldown = cooldown > 0
-  const tradableShare = available ? (tradable / available) * 100 : 0
+  const total = available + listed
+  const tradableShare = total ? (tradable / total) * 100 : 0
+  const cooldownShare = total ? (cooldown / total) * 100 : 0
+  const listedShare = total ? (listed / total) * 100 : 0
   const style = {
     '--tradable-share': `${tradableShare}%`,
-    '--cooldown-share': `${100 - tradableShare}%`,
+    '--cooldown-share': `${cooldownShare}%`,
+    '--listed-share': `${listedShare}%`,
   } as CSSProperties
 
   function stopRowInteraction(event: MouseEvent | KeyboardEvent) {
@@ -24,19 +29,20 @@ export function TradeAvailability({ group, now }: { group: InventoryGroup; now: 
       style={style}
       tabIndex={hasCooldown ? 0 : undefined}
       aria-describedby={hasCooldown ? tooltipId : undefined}
-      aria-label={`可交易 ${tradable} 件，冷却中 ${cooldown} 件`}
+      aria-label={`可交易 ${tradable} 件，冷却中 ${cooldown} 件，在售 ${listed} 件`}
       onClick={stopRowInteraction}
       onKeyDown={stopRowInteraction}
     >
       <span className={tradable ? 'availability-ratio is-tradable' : 'availability-ratio is-cooldown'}>
         <b>{tradable}</b><small>/ {available} 件</small>
       </span>
-      <span className="availability-bar" role="img" aria-label={`可交易 ${tradable} 件，冷却中 ${cooldown} 件`}>
+      <span className="availability-bar" role="img" aria-label={`可交易 ${tradable} 件，冷却中 ${cooldown} 件，在售 ${listed} 件`}>
         <i className="availability-segment is-tradable" />
         <i className="availability-segment is-cooldown" />
+        <i className="availability-segment is-listed" />
       </span>
       <span className="availability-legend">
-        <span>可交易 {tradable}</span><span>冷却 {cooldown}</span>
+        <span>可交易 {tradable}</span><span>冷却 {cooldown}</span><span>在售 {listed}</span>
       </span>
       {hasCooldown ? (
         <span className="cooldown-popover" id={tooltipId} role="tooltip">

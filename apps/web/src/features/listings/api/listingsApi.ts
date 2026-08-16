@@ -16,8 +16,11 @@ export type ListingRequest = {
     image_url: string
     wear_text?: string | null
     cost_each: number | null
-    buyer_pays: number
-    seller_proceeds: number
+    buyer_pays: number | null
+    seller_proceeds: number | null
+    sold_receive_total?: number | null
+    sold_at?: number | null
+    last_checked_at?: number | null
   }>
 }
 

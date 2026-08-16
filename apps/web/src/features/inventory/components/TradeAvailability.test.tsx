@@ -9,6 +9,7 @@ const group = (overrides: Partial<InventoryGroup> = {}): InventoryGroup => ({
   image_url: '',
   total_quantity: 20,
   available_quantity: 20,
+  listed_quantity: 0,
   marketable_quantity: 8,
   tradable_quantity: 8,
   ...overrides,
@@ -45,5 +46,21 @@ describe('TradeAvailability', () => {
 
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
     expect(container.querySelector('.trade-availability')).not.toHaveAttribute('tabindex')
+  })
+
+  it('renders listed inventory as a separate segment from cooldown', () => {
+    const { container } = render(
+      <TradeAvailability
+        group={group({ total_quantity: 20, available_quantity: 12, listed_quantity: 8 })}
+        now={Date.UTC(2026, 7, 17, 1, 0)}
+      />,
+    )
+
+    expect(container.querySelector('.trade-availability')).toHaveStyle({
+      '--tradable-share': '40%',
+      '--cooldown-share': '20%',
+      '--listed-share': '40%',
+    })
+    expect(screen.getByText('在售 8')).toBeInTheDocument()
   })
 })
