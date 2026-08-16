@@ -80,7 +80,11 @@ def create_listing_router(service: ListingService, reconciler=None) -> APIRouter
         return {"items": service.list_requests()}
 
     @router.post("/listing-requests/cancel")
-    def cancel(request: CancelRequest) -> dict:
+    async def cancel(request: CancelRequest) -> dict:
+        if reconciler is not None:
+            # Mobile-confirmed listings may not have a listing ID persisted yet.
+            # Reconcile first so cancellation can resolve the real Steam ID.
+            await reconciler.reconcile_now()
         return service.cancel_items(tuple(request.item_ids))
 
     @router.post("/listing-requests/reconcile")

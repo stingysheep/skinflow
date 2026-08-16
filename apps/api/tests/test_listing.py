@@ -3,6 +3,8 @@ from pathlib import Path
 from threading import Event, Thread
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from skinflow_api.application.inventory.models import InventoryAsset
 from skinflow_api.application.listing.models import (
@@ -18,7 +20,7 @@ from skinflow_api.infrastructure.database.inventory import SqliteInventoryReposi
 from skinflow_api.infrastructure.database.ledger import LedgerRepository
 from skinflow_api.infrastructure.database.listing import SqliteListingRepository
 from skinflow_api.infrastructure.database.sqlite_uow import SqliteScanUnitOfWork
-from skinflow_api.routes.listing import PreviewRequest
+from skinflow_api.routes.listing import PreviewRequest, create_listing_router
 
 
 class Gateway:
@@ -31,6 +33,29 @@ class Gateway:
         self.calls += 1
         self.decisions.append(decision)
         return self.result
+
+
+def test_cancel_route_reconciles_missing_listing_ids_before_cancelling() -> None:
+    events: list[str] = []
+
+    class Service:
+        def cancel_items(self, item_ids: tuple[str, ...]) -> dict:
+            events.append("cancel")
+            return {"items": [{"id": item_ids[0], "status": "cancelled"}]}
+
+    class Reconciler:
+        async def reconcile_now(self) -> dict:
+            events.append("reconcile")
+            return {"checked": 1}
+
+    app = FastAPI()
+    app.include_router(create_listing_router(Service(), Reconciler()))  # type: ignore[arg-type]
+
+    with TestClient(app) as client:
+        response = client.post("/api/listing-requests/cancel", json={"item_ids": ["item-1"]})
+
+    assert response.status_code == 200
+    assert events == ["reconcile", "cancel"]
 
 
 def _seed(path: Path) -> tuple[SqliteListingRepository, str]:
@@ -146,6 +171,26 @@ def test_reconciliation_activation_persists_steam_id_and_inventory_status(
     assert current["items"][0]["steam_listing_id"] == "listing-real"
     assert current["items"][0]["status"] == "active"
     assert inventory.list_assets()[0]["status"] == "listed"
+
+
+def test_reconciliation_backfills_steam_id_for_existing_active_item(tmp_path: Path) -> None:
+    repository, assetid = _seed(tmp_path / "listing-active-id-backfill.db")
+    service = ListingService(
+        repository,
+        repository,
+        Gateway(ListingGatewayResult(True, True, None, None)),
+    )
+    preview = service.create_preview((ListingSelection("steam", 730, "2", assetid),))
+    request = service.submit(preview["id"], "active-id-backfill-key")
+    item_id = request["items"][0]["id"]
+    repository.mark_active(item_id, 2_000)
+
+    repository.mark_active(item_id, 3_000, "listing-backfilled")
+
+    current = repository.get_request(request["id"])
+    assert current is not None
+    assert current["items"][0]["status"] == "active"
+    assert current["items"][0]["steam_listing_id"] == "listing-backfilled"
 
 
 def test_listing_blocks_active_asset(tmp_path: Path) -> None:

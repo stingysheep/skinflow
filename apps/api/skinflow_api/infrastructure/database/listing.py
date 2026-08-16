@@ -574,7 +574,7 @@ class SqliteListingRepository:
                 "UPDATE listing_item SET status='active',"
                 "steam_listing_id=COALESCE(?,steam_listing_id),"
                 "last_checked_at=?,reconcile_error=NULL WHERE id=? AND status IN "
-                "('pending_confirmation','pending_reconciliation')",
+                "('active','pending_confirmation','pending_reconciliation')",
                 (steam_listing_id, checked_at, item_id),
             )
             self._connection.execute(

@@ -70,6 +70,19 @@ describe('ListingsPage', () => {
     expect(screen.getByRole('checkbox', { name: '选择AK-47 | 板岩下所有可取消挂单' })).toBeChecked()
   })
 
+  it('allows selecting an active listing while its Steam ID is being reconciled', async () => {
+    vi.mocked(getListingRequests).mockResolvedValueOnce({ items: [{
+      ...request,
+      items: [{ ...request.items[0], steam_listing_id: null }],
+    }] })
+    render(<ListingsPage />)
+
+    const statusCheckbox = await screen.findByRole('checkbox', { name: '选择在售下所有可取消挂单' })
+    expect(statusCheckbox).toBeEnabled()
+    fireEvent.click(statusCheckbox)
+    expect(screen.getByRole('button', { name: '取消所选挂单' })).toBeEnabled()
+  })
+
   it('renders status, item group, and asset levels in order', async () => {
     render(<ListingsPage />)
 

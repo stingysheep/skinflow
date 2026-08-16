@@ -288,7 +288,7 @@ function sectionFor(item: Pick<ListingItem, 'status'>): SectionKey {
 }
 
 function canCancel(item: Pick<ListingItem, 'status' | 'steam_listing_id'>) {
-  return ['pending_confirmation', 'active'].includes(item.status) && Boolean(item.steam_listing_id)
+  return ['pending_confirmation', 'active'].includes(item.status)
 }
 
 function formatRatio(cost: number | null | undefined, proceeds: number | null | undefined) {
