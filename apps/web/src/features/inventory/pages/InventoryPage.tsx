@@ -250,11 +250,35 @@ function InventoryGrid({ groups, quantities, expandedName, details, detailLoadin
           <span className="inventory-item"><span className="inventory-thumb">{group.image_url ? <img src={group.image_url} alt="" /> : null}</span><strong>{group.display_name}{group.wear_text ? ` · ${group.wear_text}` : ''}<small>{group.market_hash_name}</small></strong></span>
           <TradeAvailability group={group} now={now} />
           <code>{money(group.average_cost)}</code>
-          <span className="quantity-stepper" onClick={(event) => event.stopPropagation()}><button type="button" onClick={() => onQuantityChange(group.market_hash_name, Math.max(0, quantity - 1))} aria-label={`减少 ${group.display_name}`}>−</button><output>{quantity}</output><button type="button" onClick={() => onQuantityChange(group.market_hash_name, Math.min(max, quantity + 1))} aria-label={`增加 ${group.display_name}`}>+</button></span>
+          <span className="quantity-stepper" onClick={(event) => event.stopPropagation()}><button type="button" onClick={() => onQuantityChange(group.market_hash_name, Math.max(0, quantity - 1))} aria-label={`减少 ${group.display_name}`}>−</button><QuantityInput value={quantity} max={max} label={group.display_name} onChange={(next) => onQuantityChange(group.market_hash_name, next)} /><button type="button" onClick={() => onQuantityChange(group.market_hash_name, Math.min(max, quantity + 1))} aria-label={`增加 ${group.display_name}`}>+</button></span>
         </div>{expandedName === group.market_hash_name ? <div className="inventory-detail-row"><InventoryGroupDetails details={details[group.market_hash_name] ?? null} loading={detailLoading === group.market_hash_name} error={detailErrors[group.market_hash_name] || null} /></div> : null}</Fragment>
       })}
     </div>
   )
+}
+
+function QuantityInput({ value, max, label, onChange }: { value: number; max: number; label: string; onChange: (value: number) => void }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+
+  return <input
+    className="quantity-input"
+    type="text"
+    inputMode="numeric"
+    value={editing ? draft : value > 0 ? String(value) : ''}
+    maxLength={4}
+    aria-label={`挂单数量 ${label}`}
+    onFocus={() => { setEditing(true); setDraft(value > 0 ? String(value) : '') }}
+    onBlur={() => {
+      setEditing(false)
+    }}
+    onChange={(event) => {
+      const nextDraft = event.target.value.replace(/\D/g, '').slice(0, 4)
+      const nextValue = nextDraft ? Math.min(max, Number(nextDraft)) : 0
+      setDraft(nextDraft)
+      onChange(nextValue)
+    }}
+  />
 }
 
 const money = (value: number | null | undefined) => value == null ? '--' : `¥${(value / 100).toFixed(2)}`

@@ -169,4 +169,26 @@ describe('InventoryPage listing preview regression', () => {
       vi.useRealTimers()
     }
   })
+
+  it('allows direct quantity editing and clears selection when set to zero', async () => {
+    mockedGetInventory.mockResolvedValue({
+      status: 'ready',
+      items: [],
+      groups: [{ market_hash_name: 'AK-47 | Slate', display_name: 'AK-47 | 板岩', image_url: '', total_quantity: 5, available_quantity: 5, marketable_quantity: 5, tradable_quantity: 5 }],
+    })
+    render(<InventoryPage />)
+    fireEvent.change(screen.getByRole('combobox', { name: '库存范围' }), { target: { value: 'all' } })
+    fireEvent.change(screen.getByRole('combobox', { name: '交易状态' }), { target: { value: 'all' } })
+    const checkbox = await screen.findByRole('checkbox')
+    const quantity = screen.getByRole('textbox', { name: '挂单数量 AK-47 | 板岩' })
+
+    fireEvent.focus(quantity)
+    fireEvent.change(quantity, { target: { value: '3' } })
+    expect(checkbox).toBeChecked()
+    expect(quantity).toHaveValue('3')
+
+    fireEvent.change(quantity, { target: { value: '0' } })
+    expect(checkbox).not.toBeChecked()
+    expect(quantity).toHaveValue('0')
+  })
 })
