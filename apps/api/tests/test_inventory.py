@@ -151,6 +151,19 @@ def test_grouped_inventory_keeps_held_items_missing_from_current_steam_inventory
     assert held["available_quantity"] == 0
 
 
+def test_grouped_inventory_does_not_count_stale_context_identity(tmp_path: Path) -> None:
+    database = tmp_path / "context-move.db"
+    repository = SqliteInventoryRepository(database)
+    LedgerRepository(database)
+    repository.sync((asset("same", "16"),))
+    repository.sync((asset("same", "2"),))
+
+    group = repository.list_grouped_assets()[0]
+
+    assert group["total_quantity"] == 1
+    assert group["available_quantity"] == 1
+
+
 def test_inventory_group_details_returns_recent_steam_book_and_trend(tmp_path: Path) -> None:
     database = tmp_path / "inventory-details.db"
     repository = SqliteInventoryRepository(database)

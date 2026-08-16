@@ -26,9 +26,11 @@ class SequenceClient:
     def __init__(self, responses: list[dict | Exception]) -> None:
         self.responses = deque(responses)
         self.calls = 0
+        self.urls: list[str] = []
 
-    def request_json(self, *_args, **_kwargs) -> dict:
+    def request_json(self, url: str, **_kwargs) -> dict:
         self.calls += 1
+        self.urls.append(url)
         response = self.responses.popleft()
         if isinstance(response, Exception):
             raise response
@@ -46,18 +48,19 @@ def empty_page() -> dict:
 
 
 def test_inventory_retries_rate_limit_then_reads_owned_context() -> None:
-    client = SequenceClient([RateLimited(), empty_page()])
+    client = SequenceClient([{}, RateLimited(), empty_page(), empty_page()])
     delays: list[float] = []
     adapter = SteamInventoryAdapter(active_session(), client, sleep=delays.append)
 
     assert adapter.fetch_inventory() == ()
-    assert client.calls == 2
+    assert client.calls == 4
     assert delays == [2.0]
 
 
 def test_inventory_continues_pagination_after_page_without_marketable_assets() -> None:
     client = SequenceClient(
         [
+            {},
             {
                 "success": 1,
                 "assets": [{"assetid": "ignored", "classid": "1", "instanceid": "0"}],
@@ -80,6 +83,7 @@ def test_inventory_continues_pagination_after_page_without_marketable_assets() -
                 ],
                 "more_items": 0,
             },
+            empty_page(),
         ]
     )
     adapter = SteamInventoryAdapter(active_session(), client, sleep=lambda _delay: None)
@@ -87,11 +91,56 @@ def test_inventory_continues_pagination_after_page_without_marketable_assets() -
     assets = adapter.fetch_inventory()
 
     assert [item.assetid for item in assets] == ["42"]
-    assert client.calls == 2
+    assert client.calls == 4
+
+
+def test_inventory_reads_trade_protected_context() -> None:
+    protected_page = {
+        "success": 1,
+        "assets": [
+            {
+                "assetid": "protected",
+                "contextid": "16",
+                "classid": "9",
+                "instanceid": "0",
+            }
+        ],
+        "descriptions": [
+            {
+                "classid": "9",
+                "instanceid": "0",
+                "market_hash_name": "P90 | Neoqueen (Factory New)",
+                "name": "P90 | Neoqueen",
+                "marketable": 0,
+                "tradable": 0,
+            }
+        ],
+        "more_items": 0,
+    }
+    client = SequenceClient([{}, empty_page(), protected_page])
+    adapter = SteamInventoryAdapter(active_session(), client, sleep=lambda _delay: None)
+
+    assets = adapter.fetch_inventory()
+
+    assert [(item.assetid, item.contextid) for item in assets] == [("protected", "16")]
+    assert any("/730/16?" in url for url in client.urls)
+
+
+def test_inventory_accepts_authenticated_probe_bad_request() -> None:
+    client = SequenceClient(
+        [
+            UpstreamUnavailable("authenticated probe", status_code=400),
+            empty_page(),
+            empty_page(),
+        ]
+    )
+    adapter = SteamInventoryAdapter(active_session(), client, sleep=lambda _delay: None)
+
+    assert adapter.fetch_inventory() == ()
 
 
 def test_inventory_exhausted_rate_limit_has_structured_retry_after() -> None:
-    client = SequenceClient([RateLimited(retry_after_seconds=5) for _ in range(4)])
+    client = SequenceClient([{}, *[RateLimited(retry_after_seconds=5) for _ in range(4)]])
     delays: list[float] = []
     adapter = SteamInventoryAdapter(active_session(), client, sleep=delays.append)
 
@@ -99,7 +148,7 @@ def test_inventory_exhausted_rate_limit_has_structured_retry_after() -> None:
         adapter.fetch_inventory()
 
     assert caught.value.retry_after_seconds == 5
-    assert client.calls == 4
+    assert client.calls == 5
     assert delays == [5.0, 5.0, 5.0]
 
 

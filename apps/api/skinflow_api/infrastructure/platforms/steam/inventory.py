@@ -18,7 +18,7 @@ from .session import InMemorySteamSession
 
 COMMUNITY_URL = "https://steamcommunity.com"
 IMAGE_URL = "https://community.cloudflare.steamstatic.com/economy/image/"
-CONTEXT_IDS = ("2",)
+CONTEXT_IDS = ("2", "16")
 MAX_PAGES_PER_CONTEXT = 20
 RETRY_DELAYS_SECONDS = (2.0, 4.0, 8.0)
 
@@ -107,12 +107,20 @@ class SteamInventoryAdapter:
 
     def fetch_inventory(self) -> tuple[InventoryAsset, ...]:
         credentials = self._session.credentials()
-        assets: list[InventoryAsset] = []
+        # Steam returns an empty successful context 16 response for expired cookies.
+        self._request_page(
+            f"{COMMUNITY_URL}/actions/GetNotificationCounts",
+            credentials.steamid64,
+            credentials.cookie_header,
+            allow_authenticated_bad_request=True,
+        )
+        assets: dict[tuple[int, str, str], InventoryAsset] = {}
         for contextid in CONTEXT_IDS:
-            assets.extend(
-                self._fetch_context(credentials.steamid64, credentials.cookie_header, contextid)
-            )
-        return tuple(assets)
+            for item in self._fetch_context(
+                credentials.steamid64, credentials.cookie_header, contextid
+            ):
+                assets[(item.appid, item.contextid, item.assetid)] = item
+        return tuple(assets.values())
 
     def _fetch_context(
         self, steamid64: str, cookie: str, contextid: str
@@ -139,7 +147,14 @@ class SteamInventoryAdapter:
             start_assetid = str(next_assetid)
         return items
 
-    def _request_page(self, url: str, steamid64: str, cookie: str) -> dict:
+    def _request_page(
+        self,
+        url: str,
+        steamid64: str,
+        cookie: str,
+        *,
+        allow_authenticated_bad_request: bool = False,
+    ) -> dict:
         last_rate_limit: RateLimited | None = None
         for attempt in range(len(RETRY_DELAYS_SECONDS) + 1):
             try:
@@ -157,6 +172,8 @@ class SteamInventoryAdapter:
                 delay = error.retry_after_seconds or RETRY_DELAYS_SECONDS[attempt]
                 self._sleep(min(float(delay), RETRY_DELAYS_SECONDS[-1]))
             except UpstreamUnavailable as error:
+                if allow_authenticated_bad_request and error.status_code == 400:
+                    return {}
                 if error.status_code in {401, 403}:
                     self._session.mark_expired()
                     raise SteamSessionExpired("Steam 会话已过期，请重新登录") from error
