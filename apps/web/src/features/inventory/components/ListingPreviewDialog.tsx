@@ -86,7 +86,7 @@ export function ListingPreviewDialog({ preview, open, onOpenChange, onSubmitted 
         <div className="listing-preview-row">
           <span className="listing-preview-name"><span className="preview-thumb">{group.imageUrl ? <img src={group.imageUrl} alt="" /> : null}</span><strong>{group.displayName}<small>{group.name}</small></strong></span>
           <span className="mono">{group.quantity}</span>
-          <label className={group.priceReachable ? 'price-input' : 'price-input is-invalid'}><span>¥</span><input aria-label={`${group.displayName} 买家支付价（实际提交）`} value={prices[group.name] ?? ''} onChange={(event) => setPrices((current) => ({ ...current, [group.name]: event.target.value }))} inputMode="decimal" /></label>
+          <label className={group.priceReachable ? 'price-input' : 'price-input is-invalid'}><span>¥</span><input aria-label={`${group.displayName} 买家支付价（实际提交）`} value={prices[group.name] ?? ''} onChange={(event) => setPrices((current) => ({ ...current, [group.name]: event.target.value }))} onBlur={() => { const value = Number(prices[group.name]); if (Number.isFinite(value) && value > 0) setPrices((current) => ({ ...current, [group.name]: (group.buyerPays / 100).toFixed(2) })) }} inputMode="decimal" /></label>
           <span className="mono">{money(group.proceeds)}</span>
           <span className="mono">{group.ratioPpm === null ? '--' : (group.ratioPpm / 1_000_000).toFixed(3)}</span>
         </div>

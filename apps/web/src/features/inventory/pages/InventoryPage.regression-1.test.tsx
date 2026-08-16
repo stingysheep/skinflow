@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { ApiError } from '../../../shared/api/client'
 import { getInventory, createListingPreview, refreshInventory } from '../api/inventoryApi'
 import { InventoryPage } from './InventoryPage'
@@ -70,7 +70,12 @@ describe('InventoryPage listing preview regression', () => {
     fireEvent.click(await screen.findByRole('checkbox'))
     fireEvent.click(screen.getByRole('button', { name: '预览挂单' }))
 
-    expect(await screen.findByRole('dialog')).toHaveTextContent('确认 Steam 挂单')
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent('确认 Steam 挂单')
+    const price = within(dialog).getByRole('textbox', { name: 'AK-47 | 板岩 买家支付价（实际提交）' })
+    fireEvent.change(price, { target: { value: '20' } })
+    fireEvent.blur(price)
+    expect(price).toHaveValue('19.98')
   })
 
   it('clears selections that disappear after an inventory refresh', async () => {
