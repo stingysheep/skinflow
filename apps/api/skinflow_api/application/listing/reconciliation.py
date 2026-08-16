@@ -47,12 +47,13 @@ class ListingReconciliationService:
     def reconcile(self) -> dict:
         items = self._store.list_reconciliation_items()
         listing_ids = tuple(
-            str(item.get("steam_listing_id") or item.get("assetid"))
-            for item in items
-            if (
-                (item.get("steam_listing_id") or item.get("assetid"))
-                and item.get("status")
+            dict.fromkeys(
+                str(identifier)
+                for item in items
+                if item.get("status")
                 in {"active", "pending_confirmation", "pending_reconciliation"}
+                for identifier in (item.get("steam_listing_id"), item.get("assetid"))
+                if identifier
             )
         )
         if not listing_ids:
@@ -69,7 +70,9 @@ class ListingReconciliationService:
         summary = {"checked": 0, "sold": 0, "cancelled": 0, "errors": 0}
         for item in items:
             tracking_id = str(item.get("steam_listing_id") or item.get("assetid") or "")
-            status = statuses.get(tracking_id)
+            status = statuses.get(str(item.get("steam_listing_id") or ""))
+            if status is None:
+                status = statuses.get(str(item.get("assetid") or ""))
             if not tracking_id or status is None:
                 continue
             now = int(time.time() * 1000)

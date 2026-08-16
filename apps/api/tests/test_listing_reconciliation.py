@@ -60,6 +60,30 @@ def test_reconciliation_records_sold_once_and_marks_item():
     assert store.sold == [("item-1", "fill-1", 1000, 123)]
 
 
+def test_reconciliation_matches_history_by_asset_when_listing_id_exists():
+    store = Store()
+    store.items[0]["assetid"] = "asset-1"
+
+    class AssetHistoryStatusPort:
+        def statuses(self, listing_ids):
+            assert listing_ids == ("listing-1", "asset-1")
+            return {
+                "asset-1": SteamListingStatus(
+                    "asset-1",
+                    "sold",
+                    sold_at=1000,
+                    seller_proceeds=123,
+                    external_ref="steam:market-history:event-1",
+                )
+            }
+
+    ledger = Ledger()
+    summary = ListingReconciliationService(store, AssetHistoryStatusPort(), ledger).reconcile()
+
+    assert summary["sold"] == 1
+    assert ledger.calls[0]["external_ref"] == "steam:market-history:event-1"
+
+
 def test_reconciliation_uses_assetid_when_listing_id_is_missing():
     store = Store()
     store.items[0].pop("steam_listing_id")
