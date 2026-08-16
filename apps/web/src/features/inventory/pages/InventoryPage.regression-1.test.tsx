@@ -342,6 +342,14 @@ describe('InventoryPage listing preview regression', () => {
     const checkbox = await screen.findByRole('checkbox')
     const quantity = screen.getByRole('textbox', { name: '挂单数量 AK-47 | 板岩' })
 
+    fireEvent.click(checkbox)
+    expect(checkbox).toBeChecked()
+    expect(quantity).toHaveValue('5')
+
+    fireEvent.click(checkbox)
+    expect(checkbox).not.toBeChecked()
+    expect(quantity).toHaveValue('')
+
     fireEvent.focus(quantity)
     fireEvent.change(quantity, { target: { value: '3' } })
     expect(checkbox).toBeChecked()

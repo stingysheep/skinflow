@@ -264,7 +264,7 @@ function InventoryGrid({ groups, quantities, expandedName, details, detailLoadin
         const quantity = quantities.get(group.market_hash_name) ?? 0
         const max = group.tradable_quantity
         return <Fragment key={group.market_hash_name}><div className={quantity ? 'inventory-row is-selected' : 'inventory-row'} role="button" tabIndex={0} aria-expanded={expandedName === group.market_hash_name} onClick={() => onExpand(group.market_hash_name)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onExpand(group.market_hash_name) } }}>
-          <input type="checkbox" checked={quantity > 0} disabled={!max} aria-label={`选择 ${group.display_name}`} onClick={(event) => event.stopPropagation()} onChange={() => onQuantityChange(group.market_hash_name, quantity ? 0 : 1)} />
+          <input type="checkbox" checked={quantity > 0} disabled={!max} aria-label={`选择 ${group.display_name}`} onClick={(event) => event.stopPropagation()} onChange={() => onQuantityChange(group.market_hash_name, quantity ? 0 : max)} />
           <span className="inventory-item"><span className="inventory-thumb">{group.image_url ? <img src={group.image_url} alt="" /> : null}</span><strong>{group.display_name}{group.wear_text ? ` · ${group.wear_text}` : ''}<small>{group.market_hash_name}</small></strong></span>
           <TradeAvailability group={group} now={now} />
           <code>{money(group.average_cost)}</code>
