@@ -557,8 +557,15 @@ class SqliteListingRepository:
         with self._lock, self._connection:
             self._connection.execute(
                 "UPDATE listing_item SET status='active',last_checked_at=?,"
-                "reconcile_error=NULL WHERE id=? AND status='pending_confirmation'",
+                "reconcile_error=NULL WHERE id=? AND status IN "
+                "('pending_confirmation','pending_reconciliation')",
                 (checked_at, item_id),
+            )
+            self._connection.execute(
+                "UPDATE listing_request SET status='submitted' WHERE id=("
+                "SELECT request_id FROM listing_item WHERE id=?) "
+                "AND status='pending_reconciliation'",
+                (item_id,),
             )
 
     def _refresh_request_status(self, item_id: str) -> None:

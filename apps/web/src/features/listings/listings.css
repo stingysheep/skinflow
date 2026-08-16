@@ -12,4 +12,5 @@
 .listing-history-thumb{display:grid;width:54px;height:40px;place-items:center;flex:0 0 auto;border:var(--border-width) solid var(--color-border);background:var(--color-surface-subtle)}
 .listing-history-thumb img{width:100%;height:100%;object-fit:contain}
 .listing-history-row .is-sold{color:var(--color-positive)}
+.listing-page-error{padding:var(--space-3);border:var(--border-width) solid var(--color-danger);background:var(--color-danger-surface);color:var(--color-danger);font-size:var(--font-size-xs)}
 @media(max-width:900px){.listing-history article header,.listing-history-row{grid-template-columns:minmax(250px,1fr) 82px 100px 100px}.listing-history article header>*:last-child,.listing-history-row>code{display:none}}

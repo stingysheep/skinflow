@@ -98,3 +98,17 @@ def test_reconciliation_includes_pending_confirmation_items():
 
     assert summary["checked"] == 1
     assert store.items[0]["status"] == "active"
+
+
+def test_reconciliation_promotes_pending_transport_to_active():
+    store = Store()
+    store.items[0]["status"] = "pending_reconciliation"
+
+    class ActiveStatusPort:
+        def statuses(self, listing_ids):
+            return {listing_ids[0]: SteamListingStatus(listing_ids[0], "active")}
+
+    summary = ListingReconciliationService(store, ActiveStatusPort(), Ledger()).reconcile()
+
+    assert summary["checked"] == 1
+    assert store.items[0]["status"] == "active"

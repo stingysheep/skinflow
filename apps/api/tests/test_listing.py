@@ -104,6 +104,25 @@ def test_listing_uncertain_transport_is_not_retried(tmp_path: Path) -> None:
     assert len(repository.list_requests()) == 1
 
 
+def test_listing_reconciliation_promotes_request_after_uncertain_submit(tmp_path: Path) -> None:
+    repository, assetid = _seed(tmp_path / "listing-reconcile-active.db")
+
+    class FailingGateway:
+        def submit(self, _decision: dict) -> ListingGatewayResult:
+            raise TimeoutError
+
+    service = ListingService(repository, repository, FailingGateway())
+    preview = service.create_preview((ListingSelection("steam", 730, "2", assetid),))
+    request = service.submit(preview["id"], "uncertain-active-key")
+
+    repository.mark_active(request["items"][0]["id"], 2_000)
+
+    updated = repository.get_request(request["id"])
+    assert updated is not None
+    assert updated["status"] == "submitted"
+    assert updated["items"][0]["status"] == "active"
+
+
 def test_listing_preview_fetches_missing_steam_snapshot(tmp_path: Path) -> None:
     repository, assetid = _seed(tmp_path / "listing-missing-snapshot.db")
     repository._connection.execute("DELETE FROM market_tier")
