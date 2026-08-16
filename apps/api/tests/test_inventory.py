@@ -1,3 +1,5 @@
+import sqlite3
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -218,6 +220,74 @@ def test_grouped_inventory_aggregates_cooldown_batches(tmp_path: Path) -> None:
         {"tradable_after": 1000, "quantity": 2, "hold_text": None},
         {"tradable_after": 2000, "quantity": 1, "hold_text": None},
     ]
+
+
+def test_grouped_inventory_deduplicates_listed_asset_from_trade_context(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "listed-context.db"
+    repository = SqliteInventoryRepository(database)
+    LedgerRepository(database)
+    repository.sync(
+        (
+            asset("listed", "2"),
+            asset(
+                "listed",
+                "16",
+                tradable=False,
+                hold_text="⇆ 该物品已在 Steam 社区市场挂售，挂售期间不可消耗或修改。",
+            ),
+        )
+    )
+    connection = sqlite3.connect(database)
+    with connection:
+        connection.execute(
+            "UPDATE inventory_asset SET status='listed' WHERE assetid=? AND contextid='2'",
+            ("listed",),
+        )
+    connection.close()
+
+    group = repository.list_grouped_assets()[0]
+
+    assert group["total_quantity"] == 1
+    assert group["available_quantity"] == 0
+    assert group["listed_quantity"] == 1
+    assert group["cooldown_batches"] == []
+
+
+def test_inventory_group_details_refreshes_stale_steam_book_before_returning() -> None:
+    fresh_observed_at = int(time.time() * 1000)
+
+    class Repository:
+        def __init__(self) -> None:
+            self.details = {"current": {"observed_at": 1}, "trend": []}
+
+        def get_group_details(self, _name: str) -> dict:
+            return self.details
+
+    repository = Repository()
+
+    class Provider:
+        calls = 0
+
+        def refresh(self, _name: str) -> bool:
+            self.calls += 1
+            repository.details = {
+                "current": {"observed_at": fresh_observed_at},
+                "trend": [],
+            }
+            return True
+
+    provider = Provider()
+    service = InventoryService(
+        InMemorySteamSession(), FakeGateway(()), repository, provider  # type: ignore[arg-type]
+    )
+
+    details = service.get_group_details("AK-47 | Slate")
+
+    assert provider.calls == 1
+    assert details is not None
+    assert details["current"]["observed_at"] == fresh_observed_at
 
 
 def test_inventory_group_details_returns_recent_steam_book_and_trend(tmp_path: Path) -> None:

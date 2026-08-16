@@ -134,7 +134,6 @@ export function InventoryPage() {
       return
     }
     setExpandedName(name)
-    if (Object.prototype.hasOwnProperty.call(groupDetails, name)) return
     setDetailLoading(name)
     setDetailErrors((current) => ({ ...current, [name]: '' }))
     try {

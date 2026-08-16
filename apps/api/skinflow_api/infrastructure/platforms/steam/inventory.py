@@ -147,12 +147,15 @@ class SteamInventoryAdapter:
             cookie,
             allow_authenticated_bad_request=True,
         )
-        assets: dict[tuple[int, str, str], InventoryAsset] = {}
+        assets: dict[tuple[int, str], InventoryAsset] = {}
         for contextid in CONTEXT_IDS:
             for item in self._fetch_context(
                 credentials.steamid64, cookie, contextid
             ):
-                assets[(item.appid, item.contextid, item.assetid)] = item
+                # Steam can expose a listed asset in both contexts while the
+                # listing is being processed. Keep the first (primary) context
+                # so one asset cannot be counted twice in inventory totals.
+                assets.setdefault((item.appid, item.assetid), item)
         return tuple(assets.values())
 
     def _fetch_context(

@@ -97,7 +97,8 @@ class SqliteInventoryRepository:
                     "image_url=excluded.image_url,classid=excluded.classid,instanceid=excluded.instanceid,"
                     "marketable=excluded.marketable,tradable=excluded.tradable,hold_text=excluded.hold_text,"
                     "wear_text=excluded.wear_text,tradable_after=excluded.tradable_after,"
-                    "status='available',last_seen_at=excluded.last_seen_at",
+                    "status=CASE WHEN inventory_asset.status='listed' THEN 'listed' "
+                    "ELSE 'available' END,last_seen_at=excluded.last_seen_at",
                     (
                         item.platform,
                         item.appid,
@@ -172,6 +173,9 @@ class SqliteInventoryRepository:
                 "SUM(l.quantity-COALESCE(s.quantity,0)) quantity "
                 "FROM purchase_lot l LEFT JOIN sold s ON s.purchase_lot_id=l.id "
                 "WHERE l.quantity>COALESCE(s.quantity,0) GROUP BY l.market_hash_name), "
+                "inventory_current AS (SELECT * FROM inventory_asset WHERE "
+                "status IN ('available','listed') AND NOT (status='available' AND "
+                "COALESCE(hold_text,'') LIKE '%已在 Steam 社区市场挂售%')), "
                 "asset_groups AS (SELECT market_hash_name,"
                 "SUM(CASE WHEN status IN ('available','listed') THEN 1 ELSE 0 END) total_quantity, "
                 "SUM(CASE WHEN status='available' THEN 1 ELSE 0 END) available_quantity, "
@@ -182,7 +186,7 @@ class SqliteInventoryRepository:
                 "AND tradable=1 THEN 1 ELSE 0 END) tradable_quantity, "
                 "CASE WHEN COUNT(DISTINCT NULLIF(wear_text,''))=1 THEN MAX(wear_text) "
                 "WHEN COUNT(DISTINCT NULLIF(wear_text,''))>1 THEN '多种磨损' END wear_text "
-                "FROM inventory_asset GROUP BY market_hash_name), "
+                "FROM inventory_current GROUP BY market_hash_name), "
                 "names AS (SELECT market_hash_name FROM asset_groups "
                 "UNION SELECT market_hash_name FROM costs) "
                 "SELECT n.market_hash_name, "
@@ -203,6 +207,7 @@ class SqliteInventoryRepository:
             batch_rows = self._connection.execute(
                 "SELECT market_hash_name,tradable_after,hold_text,COUNT(*) quantity "
                 "FROM inventory_asset WHERE status='available' AND tradable=0 "
+                "AND COALESCE(hold_text,'') NOT LIKE '%已在 Steam 社区市场挂售%' "
                 "GROUP BY market_hash_name,tradable_after,hold_text "
                 "ORDER BY market_hash_name,tradable_after IS NULL,tradable_after"
             ).fetchall()

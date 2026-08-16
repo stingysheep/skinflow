@@ -126,6 +126,35 @@ def test_inventory_reads_trade_protected_context() -> None:
     assert any("/730/16?" in url for url in client.urls)
 
 
+def test_inventory_deduplicates_asset_visible_in_primary_and_trade_contexts() -> None:
+    def page(contextid: str, tradable: int) -> dict:
+        return {
+            "success": 1,
+            "assets": [{
+                "assetid": "listed",
+                "contextid": contextid,
+                "classid": "9",
+                "instanceid": "0",
+            }],
+            "descriptions": [{
+                "classid": "9",
+                "instanceid": "0",
+                "market_hash_name": "P90 | Neoqueen (Factory New)",
+                "name": "P90 | Neoqueen",
+                "marketable": tradable,
+                "tradable": tradable,
+            }],
+            "more_items": 0,
+        }
+
+    client = SequenceClient([{}, page("2", 1), page("16", 0)])
+    adapter = SteamInventoryAdapter(active_session(), client, sleep=lambda _delay: None)
+
+    assets = adapter.fetch_inventory()
+
+    assert [(item.assetid, item.contextid) for item in assets] == [("listed", "2")]
+
+
 def test_inventory_accepts_authenticated_probe_bad_request() -> None:
     client = SequenceClient(
         [

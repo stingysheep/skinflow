@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from threading import Lock, Thread
+from threading import Lock
 
 from .errors import InventoryError, SteamSessionExpired
 from .models import InventoryRefreshResult, SteamSessionInfo, SteamSessionStatus
@@ -53,28 +53,33 @@ class InventoryService:
 
     def get_group_details(self, market_hash_name: str) -> dict | None:
         details = self._repository.get_group_details(market_hash_name)
-        trend = (details or {}).get("trend") or []
-        has_csqaq_trend = any(point.get("source") == "csqaq" for point in trend)
-        if self._market_detail_provider is not None and not has_csqaq_trend:
-            # Do not hold the HTTP request open while CSQAQ pagination and chart
-            # rate limits are applied. The next detail read will see the saved data.
-            with self._detail_refresh_lock:
-                now = time.monotonic()
-                last_attempt = self._detail_last_attempt.get(market_hash_name, 0.0)
-                if market_hash_name not in self._detail_refreshing and now - last_attempt >= 30.0:
-                    self._detail_refreshing.add(market_hash_name)
-                    self._detail_last_attempt[market_hash_name] = now
-                    Thread(
-                        target=self._refresh_group_details,
-                        args=(market_hash_name,),
-                        daemon=True,
-                        name="skinflow-market-detail",
-                    ).start()
+        if (
+            self._market_detail_provider is not None
+            and self._detail_is_stale(details)
+            and self._claim_detail_refresh(market_hash_name)
+        ):
+            # The order book is the primary content of this view. Refresh it
+            # before returning so opening a group does not show an old book.
+            try:
+                self._market_detail_provider.refresh(market_hash_name)
+                details = self._repository.get_group_details(market_hash_name)
+            finally:
+                with self._detail_refresh_lock:
+                    self._detail_refreshing.discard(market_hash_name)
         return details
 
-    def _refresh_group_details(self, market_hash_name: str) -> None:
-        try:
-            self._market_detail_provider.refresh(market_hash_name)  # type: ignore[union-attr]
-        finally:
-            with self._detail_refresh_lock:
-                self._detail_refreshing.discard(market_hash_name)
+    @staticmethod
+    def _detail_is_stale(details: dict | None) -> bool:
+        current = (details or {}).get("current") or {}
+        observed_at = current.get("observed_at")
+        return not isinstance(observed_at, int) or observed_at < int(time.time() * 1000) - 15_000
+
+    def _claim_detail_refresh(self, market_hash_name: str) -> bool:
+        with self._detail_refresh_lock:
+            now = time.monotonic()
+            last_attempt = self._detail_last_attempt.get(market_hash_name, 0.0)
+            if market_hash_name in self._detail_refreshing or now - last_attempt < 15.0:
+                return False
+            self._detail_refreshing.add(market_hash_name)
+            self._detail_last_attempt[market_hash_name] = now
+            return True
