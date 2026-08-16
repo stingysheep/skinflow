@@ -44,7 +44,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(create_health_router(container.health_service))
     app.include_router(create_scan_router(container.scan_service, container.scan_runner))
     app.include_router(
-        create_ledger_router(container.ledger_service, container.inventory_service)
+        create_ledger_router(
+            container.ledger_service,
+            container.inventory_service,
+            container.listing_reconciliation,
+        )
     )
     app.include_router(
         create_listing_router(container.listing_service, container.listing_reconciliation)

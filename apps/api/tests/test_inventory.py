@@ -142,17 +142,36 @@ def test_inventory_service_requires_session_then_syncs(tmp_path: Path) -> None:
 
 
 def test_inventory_refresh_route_calls_inventory_service() -> None:
+    events: list[str] = []
+
     class Inventory:
         def refresh(self):
+            events.append("inventory")
             return type("Result", (), {"run_id": "run", "asset_count": 2, "observed_at": 3})()
 
+    class Reconciler:
+        async def reconcile_now(self):
+            events.append("listings")
+            return {"checked": 4, "sold": 1, "cancelled": 2, "errors": 0}
+
     app = FastAPI()
-    app.include_router(create_ledger_router(object(), Inventory()))
+    app.include_router(create_ledger_router(object(), Inventory(), Reconciler()))
     with TestClient(app) as client:
         response = client.post("/api/inventory/refresh", json={})
 
     assert response.status_code == 200
-    assert response.json() == {"run_id": "run", "asset_count": 2, "observed_at": 3}
+    assert response.json() == {
+        "run_id": "run",
+        "asset_count": 2,
+        "observed_at": 3,
+        "listing_reconciliation": {
+            "checked": 4,
+            "sold": 1,
+            "cancelled": 2,
+            "errors": 0,
+        },
+    }
+    assert events == ["inventory", "listings"]
 
 
 def test_inventory_sync_populates_chinese_item_metadata(tmp_path: Path) -> None:

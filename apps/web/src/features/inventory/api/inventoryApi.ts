@@ -6,7 +6,11 @@ export const getInventory = (signal?: AbortSignal) =>
   getJson<InventoryResponse>('/api/inventory', signal)
 
 export const refreshInventory = () =>
-  postJson<{ asset_count: number; observed_at: number }>('/api/inventory/refresh', {})
+  postJson<{ asset_count: number; observed_at: number }>(
+    '/api/inventory/refresh',
+    {},
+    120_000,
+  )
 
 type AssetPreviewInput = { platform: string; appid: number; contextid: string; assetid: string }
 type GroupPreviewInput = { market_hash_name: string; quantity: number; buyer_pays?: number }

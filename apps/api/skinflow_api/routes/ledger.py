@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 from fastapi import APIRouter, HTTPException, Query
@@ -33,7 +34,9 @@ class HoldingUpdateRequest(BaseModel):
 
 
 def create_ledger_router(
-    repository: LedgerService, inventory_service: InventoryService
+    repository: LedgerService,
+    inventory_service: InventoryService,
+    listing_reconciler=None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api", tags=["ledger"])
 
@@ -128,12 +131,18 @@ def create_ledger_router(
         return details
 
     @router.post("/inventory/refresh")
-    def refresh_inventory() -> dict:
-        result = inventory_service.refresh()
+    async def refresh_inventory() -> dict:
+        result = await asyncio.to_thread(inventory_service.refresh)
+        reconciliation = (
+            await listing_reconciler.reconcile_now()
+            if listing_reconciler is not None
+            else {"checked": 0, "sold": 0, "cancelled": 0, "errors": 0}
+        )
         return {
             "run_id": result.run_id,
             "asset_count": result.asset_count,
             "observed_at": result.observed_at,
+            "listing_reconciliation": reconciliation,
         }
 
     @router.get("/platform-health")
