@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Boxes, ListPlus, RefreshCw, Search } from 'lucide-react'
 import { Button, FeedbackState } from '../../../shared/components'
 import { ApiError } from '../../../shared/api/client'
@@ -16,6 +16,7 @@ import '../inventory.css'
 
 type InventoryScope = 'all' | 'held'
 type InventoryTradeFilter = 'all' | 'tradable' | 'cooldown'
+const INVENTORY_REFRESH_INTERVAL_MS = 60_000
 
 export function InventoryPage() {
   const [data, setData] = useState<InventoryResponse | null>(null)
@@ -34,9 +35,10 @@ export function InventoryPage() {
   const [groupDetails, setGroupDetails] = useState<Record<string, InventoryGroupDetailsModel | null>>({})
   const [detailLoading, setDetailLoading] = useState<string | null>(null)
   const [detailErrors, setDetailErrors] = useState<Record<string, string>>({})
+  const refreshInFlight = useRef(false)
 
-  const load = async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     setError(null)
     try {
       setData(await getInventory())
@@ -45,10 +47,6 @@ export function InventoryPage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  useEffect(() => {
-    void load()
   }, [])
 
   const groups = useMemo(() => normalizeGroups(data), [data])
@@ -83,18 +81,27 @@ export function InventoryPage() {
     })
   }
 
-  async function refresh() {
-    setRefreshing(true)
-    setError(null)
+  const refresh = useCallback(async (silent = false) => {
+    if (refreshInFlight.current) return
+    refreshInFlight.current = true
+    if (!silent) setRefreshing(true)
+    if (!silent) setError(null)
     try {
       await refreshInventory()
-      await load()
+      await load(silent)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Steam 库存刷新失败')
+      if (!silent) setError(reason instanceof Error ? reason.message : 'Steam 库存刷新失败')
     } finally {
-      setRefreshing(false)
+      refreshInFlight.current = false
+      if (!silent) setRefreshing(false)
     }
-  }
+  }, [load])
+
+  useEffect(() => {
+    void load()
+    const timer = window.setInterval(() => void refresh(true), INVENTORY_REFRESH_INTERVAL_MS)
+    return () => window.clearInterval(timer)
+  }, [load, refresh])
 
   async function buildPreview() {
     const selectedGroups = visibleGroups
@@ -179,7 +186,7 @@ export function InventoryPage() {
         <span>{visibleGroups.length} 组 · 已选 {selectedCount} 件</span>
         <div className="command-spacer" />
         {previewError ? <span className="inventory-action-error" role="alert">{previewError}</span> : null}
-        <Button icon={<RefreshCw size={16} />} loading={refreshing} onClick={refresh}>刷新库存</Button>
+        <Button icon={<RefreshCw size={16} />} loading={refreshing} onClick={() => void refresh()}>刷新库存</Button>
         <Button variant="primary" icon={<ListPlus size={16} />} loading={previewLoading} disabled={!selectedCount} onClick={() => void buildPreview()}>预览挂单</Button>
       </div>
       {error ? <FeedbackState kind="error" title="库存读取失败" description={error} /> : null}

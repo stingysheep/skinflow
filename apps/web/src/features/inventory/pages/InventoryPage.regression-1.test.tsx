@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ApiError } from '../../../shared/api/client'
 import { getInventory, createListingPreview, refreshInventory } from '../api/inventoryApi'
 import { InventoryPage } from './InventoryPage'
@@ -116,5 +116,24 @@ describe('InventoryPage listing preview regression', () => {
     fireEvent.change(screen.getByRole('combobox', { name: '库存范围' }), { target: { value: 'held' } })
 
     expect(await screen.findByText('AK-47 | 已记录持仓')).toBeInTheDocument()
+  })
+
+  it('synchronizes Steam inventory periodically so trade status changes appear', async () => {
+    vi.useFakeTimers()
+    try {
+      render(<InventoryPage />)
+      await act(async () => {})
+      mockedRefreshInventory.mockClear()
+      mockedGetInventory.mockClear()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000)
+      })
+
+      expect(mockedRefreshInventory).toHaveBeenCalledTimes(1)
+      expect(mockedGetInventory).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
