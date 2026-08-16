@@ -30,8 +30,20 @@ export const getListingRequests = (signal?: AbortSignal) =>
 export const reconcileListingRequests = () =>
   postJson<{ checked: number; sold: number; cancelled: number; errors: number }>('/api/listing-requests/reconcile', {})
 
-export const cancelListingItems = (item_ids: string[]) =>
-  postJson<{ items: Array<{ id: string; status: string; message: string | null }> }>('/api/listing-requests/cancel', { item_ids })
+export async function cancelListingItems(item_ids: string[]) {
+  const items: Array<{ id: string; status: string; message: string | null }> = []
+  for (let start = 0; start < item_ids.length; start += 100) {
+    const batch = item_ids.slice(start, start + 100)
+    try {
+      const result = await postJson<{ items: Array<{ id: string; status: string; message: string | null }> }>('/api/listing-requests/cancel', { item_ids: batch })
+      items.push(...result.items)
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : 'CANCEL_REQUEST_FAILED'
+      items.push(...batch.map((id) => ({ id, status: 'failed', message })))
+    }
+  }
+  return { items }
+}
 
 export const getListingRequest = (requestId: string, signal?: AbortSignal) =>
   getJson<ListingRequest>(`/api/listing-requests/${encodeURIComponent(requestId)}`, signal)
