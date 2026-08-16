@@ -120,8 +120,8 @@ class LedgerRepository:
         with self._lock:
             wear_select, wear_join, _ = self._wear_sql()
             rows = self._connection.execute(
-                "SELECT f.id,f.quantity,f.receive_total,f.sold_at,f.listing_item_id,f.external_ref,"
-                "l.market_hash_name,"
+                "SELECT f.id,f.purchase_lot_id,f.quantity,f.receive_total,f.sold_at,"
+                "f.listing_item_id,f.external_ref,l.market_hash_name,"
                 "COALESCE(NULLIF(m.display_name_zh,''),'中文名称待同步') display_name,"
                 "COALESCE(m.image_url,'') image_url,"
                 f"l.cost_each,f.quantity*l.cost_each cost_total,{wear_select} "

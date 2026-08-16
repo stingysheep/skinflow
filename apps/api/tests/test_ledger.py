@@ -39,6 +39,7 @@ def test_legacy_ledger_migration_is_idempotent(tmp_path: Path) -> None:
     assert second["status"] == "already_completed"
     assert holdings[0]["open_quantity"] == 2
     assert history[0]["receive_total"] == 140
+    assert history[0]["purchase_lot_id"] == "legacy-lot-1"
 
 
 def test_purchase_and_fifo_sale(tmp_path: Path) -> None:
