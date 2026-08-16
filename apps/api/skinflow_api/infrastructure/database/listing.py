@@ -528,9 +528,12 @@ class SqliteListingRepository:
     def list_reconciliation_items(self) -> list[dict]:
         with self._lock:
             rows = self._connection.execute(
-                "SELECT i.*,p.market_hash_name,p.buyer_pays,p.seller_proceeds "
+                "SELECT i.*,r.created_at request_created_at,"
+                "p.market_hash_name,p.buyer_pays,p.seller_proceeds "
                 "FROM listing_item i JOIN listing_preview_item p ON p.id=i.preview_item_id "
-                "WHERE i.status IN ('active','pending_confirmation','pending_reconciliation') "
+                "JOIN listing_request r ON r.id=i.request_id "
+                "WHERE i.status IN ('submitting','active','pending_confirmation',"
+                "'pending_reconciliation') "
                 "ORDER BY i.rowid"
             ).fetchall()
         return [dict(row) for row in rows]
@@ -585,7 +588,7 @@ class SqliteListingRepository:
                 "UPDATE listing_item SET status='active',"
                 "steam_listing_id=COALESCE(?,steam_listing_id),"
                 "last_checked_at=?,reconcile_error=NULL WHERE id=? AND status IN "
-                "('active','pending_confirmation','pending_reconciliation')",
+                "('submitting','active','pending_confirmation','pending_reconciliation')",
                 (steam_listing_id, checked_at, item_id),
             )
             self._connection.execute(
@@ -597,7 +600,7 @@ class SqliteListingRepository:
             self._connection.execute(
                 "UPDATE listing_request SET status='submitted' WHERE id=("
                 "SELECT request_id FROM listing_item WHERE id=?) "
-                "AND status='pending_reconciliation'",
+                "AND status IN ('submitting','pending_reconciliation')",
                 (item_id,),
             )
 

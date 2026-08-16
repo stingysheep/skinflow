@@ -9,10 +9,8 @@ from skinflow_api.domain.listing import ListingDecision
 from skinflow_api.domain.listing.errors import InvalidListing
 from skinflow_api.domain.pricing import (
     FeeBreakdown,
-    Tier,
     calculate_net,
     receive_to_pays,
-    recommend_listing_price,
     steam_cny_policy,
 )
 
@@ -247,16 +245,7 @@ class ListingService:
         elif market and market.bids:
             fees = _fee_breakdown_for_buyer_pays(max(item.price for item in market.bids), policy)
         else:
-            buyer_pays = recommend_listing_price(
-                lowest_ask=context.asks[0].price,
-                price_tick=1,
-                fee_policy=policy,
-                requested_qty=1,
-                ask_levels=tuple(Tier(item.price, item.quantity) for item in context.asks),
-                min_price=1,
-                daily_volume=None,
-            ).recommended_price
-            fees = calculate_net(buyer_pays, policy)
+            fees = _fee_breakdown_for_buyer_pays(context.asks[0].price, policy)
         buyer_pays = fees.buyer_pays
         cost_each = selection.cost_each if selection.cost_each is not None else context.cost_each
         ratio = (

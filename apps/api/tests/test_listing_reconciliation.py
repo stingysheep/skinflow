@@ -179,3 +179,21 @@ def test_reconciliation_promotes_pending_transport_to_active():
 
     assert summary["checked"] == 1
     assert store.items[0]["status"] == "active"
+
+
+def test_reconciliation_recovers_interrupted_submitting_item():
+    store = Store()
+    store.items[0]["status"] = "submitting"
+    store.items[0]["assetid"] = "asset-1"
+    store.items[0]["request_created_at"] = 1
+
+    class ActiveStatusPort:
+        def statuses(self, listing_ids):
+            assert "asset-1" in listing_ids
+            return {"asset-1": SteamListingStatus("listing-recovered", "active")}
+
+    summary = ListingReconciliationService(store, ActiveStatusPort(), Ledger()).reconcile()
+
+    assert summary["checked"] == 1
+    assert store.items[0]["status"] == "active"
+    assert store.items[0]["steam_listing_id"] == "listing-recovered"

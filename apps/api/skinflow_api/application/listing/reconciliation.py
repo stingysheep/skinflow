@@ -55,7 +55,7 @@ class ListingReconciliationService:
                 str(identifier)
                 for item in items
                 if item.get("status")
-                in {"active", "pending_confirmation", "pending_reconciliation"}
+                in {"submitting", "active", "pending_confirmation", "pending_reconciliation"}
                 for identifier in (item.get("steam_listing_id"), item.get("assetid"))
                 if identifier
             )
@@ -116,7 +116,7 @@ class ListingReconciliationService:
             elif status.status == "cancelled":
                 missing_confirmation = (
                     (status.external_ref or "").startswith("steam:market-missing:")
-                    and item.get("status") == "pending_confirmation"
+                    and item.get("status") in {"submitting", "pending_confirmation"}
                 )
                 if missing_confirmation:
                     created_at = int(item.get("request_created_at") or 0)

@@ -132,6 +132,42 @@ def test_listing_preview_and_idempotent_submit(tmp_path: Path) -> None:
     assert SqliteInventoryRepository(tmp_path / "listing.db").list_assets()[0]["status"] == "listed"
 
 
+def test_interrupted_submitting_item_is_available_for_reconciliation(tmp_path: Path) -> None:
+    path = tmp_path / "listing-interrupted.db"
+    repository, assetid = _seed(path)
+    service = ListingService(
+        repository, repository, Gateway(ListingGatewayResult(True, True, None, None))
+    )
+    preview = service.create_preview((ListingSelection("steam", 730, "2", assetid),))
+    request = repository.create_request(preview["id"], "interrupted-key")
+    item_id = request["items"][0]["id"]
+
+    recoverable = repository.list_reconciliation_items()
+    assert recoverable[0]["status"] == "submitting"
+    assert recoverable[0]["request_created_at"] > 0
+
+    repository.mark_active(item_id, 2_000, "listing-recovered")
+
+    updated = repository.get_request(request["id"])
+    assert updated is not None
+    assert updated["status"] == "submitted"
+    assert updated["items"][0]["status"] == "active"
+    assert SqliteInventoryRepository(path).list_assets()[0]["status"] == "listed"
+
+
+def test_listing_preview_without_bids_uses_lowest_ask_without_undercutting(
+    tmp_path: Path,
+) -> None:
+    repository, assetid = _seed(tmp_path / "listing-ask-price.db")
+    service = ListingService(
+        repository, repository, Gateway(ListingGatewayResult(True, False, "1", None))
+    )
+
+    preview = service.create_preview((ListingSelection("steam", 730, "2", assetid),))
+
+    assert preview["items"][0]["buyer_pays"] == 200
+
+
 def test_buyer_paid_price_is_converted_to_steam_seller_price_before_submit(
     tmp_path: Path,
 ) -> None:
