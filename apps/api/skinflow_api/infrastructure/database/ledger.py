@@ -332,6 +332,79 @@ class LedgerRepository:
                 )
         return {"quantity": quantity, "receive_total": receive_total, "fills": fills}
 
+    def update_holding_average_cost(self, market_hash_name: str, cost_each: int) -> dict:
+        if not market_hash_name.strip() or cost_each < 1:
+            raise ValueError("invalid holding cost input")
+        with self._lock, self._connection:
+            lots = self._open_lots(market_hash_name)
+            if not lots:
+                raise LookupError("holding not found")
+            for lot in lots:
+                sold = int(lot["sold_quantity"])
+                open_quantity = int(lot["quantity"]) - sold
+                if sold:
+                    self._connection.execute(
+                        "UPDATE purchase_lot SET quantity=? WHERE id=?",
+                        (sold, lot["id"]),
+                    )
+                    self._connection.execute(
+                        "INSERT INTO purchase_lot VALUES(?,?,?,?,?,?,?,?,?)",
+                        (
+                            str(uuid4()),
+                            None,
+                            lot["market_hash_name"],
+                            lot["game"],
+                            open_quantity,
+                            cost_each,
+                            lot["bought_at"],
+                            lot["venue"],
+                            lot["floor_at_buy"],
+                        ),
+                    )
+                else:
+                    self._connection.execute(
+                        "UPDATE purchase_lot SET cost_each=? WHERE id=?",
+                        (cost_each, lot["id"]),
+                    )
+        holding = next(
+            (item for item in self.list_holdings() if item["market_hash_name"] == market_hash_name),
+            None,
+        )
+        if holding is None:
+            raise LookupError("holding not found")
+        return holding
+
+    def delete_holding(self, market_hash_name: str) -> dict:
+        if not market_hash_name.strip():
+            raise ValueError("invalid holding name")
+        with self._lock, self._connection:
+            lots = self._open_lots(market_hash_name)
+            if not lots:
+                raise LookupError("holding not found")
+            removed = 0
+            for lot in lots:
+                sold = int(lot["sold_quantity"])
+                removed += int(lot["quantity"]) - sold
+                if sold:
+                    self._connection.execute(
+                        "UPDATE purchase_lot SET quantity=? WHERE id=?",
+                        (sold, lot["id"]),
+                    )
+                else:
+                    self._connection.execute("DELETE FROM purchase_lot WHERE id=?", (lot["id"],))
+        return {"market_hash_name": market_hash_name, "deleted_quantity": removed}
+
+    def _open_lots(self, market_hash_name: str) -> list[sqlite3.Row]:
+        return self._connection.execute(
+            "WITH fill_totals AS (SELECT purchase_lot_id,SUM(quantity) quantity "
+            "FROM sale_fill GROUP BY purchase_lot_id) "
+            "SELECT l.*,COALESCE(f.quantity,0) sold_quantity FROM purchase_lot l "
+            "LEFT JOIN fill_totals f ON f.purchase_lot_id=l.id "
+            "WHERE l.market_hash_name=? AND l.game='cs2' "
+            "AND l.quantity>COALESCE(f.quantity,0) ORDER BY l.bought_at,l.id",
+            (market_hash_name,),
+        ).fetchall()
+
     def record_external_sale(
         self,
         *,

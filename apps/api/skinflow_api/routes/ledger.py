@@ -28,6 +28,10 @@ class SaleRequest(BaseModel):
     sold_at: int | None = Field(default=None, ge=1)
 
 
+class HoldingUpdateRequest(BaseModel):
+    cost_each: int = Field(ge=1)
+
+
 def create_ledger_router(
     repository: LedgerService, inventory_service: InventoryService
 ) -> APIRouter:
@@ -41,6 +45,14 @@ def create_ledger_router(
             "items": items,
             "summary": {"items": len(items), "open_quantity": open_quantity},
         }
+
+    @router.put("/holdings/{market_hash_name}")
+    def update_holding(market_hash_name: str, request: HoldingUpdateRequest) -> dict:
+        return repository.update_holding_average_cost(market_hash_name, request.cost_each)
+
+    @router.delete("/holdings/{market_hash_name}")
+    def delete_holding(market_hash_name: str) -> dict:
+        return repository.delete_holding(market_hash_name)
 
     @router.get("/history")
     def history() -> dict:

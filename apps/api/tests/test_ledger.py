@@ -88,6 +88,30 @@ def test_holdings_include_localized_name_and_thumbnail(tmp_path: Path) -> None:
     assert holding["image_url"] == "https://example.test/slate.png"
 
 
+def test_edit_holding_average_cost_preserves_sold_history_cost(tmp_path: Path) -> None:
+    repository = LedgerRepository(tmp_path / "ledger.db")
+    repository.create_purchase("AK-47 | Slate", 3, 100, 1000, "BUFF", False)
+    repository.record_sale("AK-47 | Slate", 1, 150, 1100)
+
+    holding = repository.update_holding_average_cost("AK-47 | Slate", 250)
+
+    assert holding["open_quantity"] == 2
+    assert holding["open_cost"] == 500
+    assert repository.list_history()[0]["cost_total"] == 100
+
+
+def test_delete_holding_removes_only_open_quantity_and_keeps_history(tmp_path: Path) -> None:
+    repository = LedgerRepository(tmp_path / "ledger.db")
+    repository.create_purchase("AK-47 | Slate", 3, 100, 1000, "BUFF", False)
+    repository.record_sale("AK-47 | Slate", 1, 150, 1100)
+
+    result = repository.delete_holding("AK-47 | Slate")
+
+    assert result["deleted_quantity"] == 2
+    assert repository.list_holdings() == []
+    assert repository.list_history()[0]["cost_total"] == 100
+
+
 def test_legacy_item_metadata_import_is_idempotent(tmp_path: Path) -> None:
     source = tmp_path / "cache.db"
     connection = sqlite3.connect(source)

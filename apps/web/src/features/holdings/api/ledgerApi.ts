@@ -1,4 +1,4 @@
-import { getJson, postJson } from '../../../shared/api/client'
+import { deleteJson, getJson, postJson, putJson } from '../../../shared/api/client'
 
 export type Holding = {
   market_hash_name: string
@@ -35,3 +35,9 @@ export const createSale = (body: {
   quantity: number
   receive_total: number
 }) => postJson<{ fills: unknown[] }>('/api/sales', body)
+
+export const updateHoldingAverageCost = (marketHashName: string, costEach: number) =>
+  putJson<{ market_hash_name: string; cost_each: number }>('/api/holdings/' + encodeURIComponent(marketHashName), { cost_each: costEach })
+
+export const deleteHolding = (marketHashName: string) =>
+  deleteJson<{ market_hash_name: string; deleted_quantity: number }>('/api/holdings/' + encodeURIComponent(marketHashName))

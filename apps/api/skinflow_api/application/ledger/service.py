@@ -27,3 +27,9 @@ class LedgerService:
 
     def catalog(self, query: str = "", limit: int = 20) -> list[dict]:
         return self._repository.search_catalog(query, limit)
+
+    def update_holding_average_cost(self, market_hash_name: str, cost_each: int) -> dict:
+        return self._repository.update_holding_average_cost(market_hash_name, cost_each)
+
+    def delete_holding(self, market_hash_name: str) -> dict:
+        return self._repository.delete_holding(market_hash_name)
