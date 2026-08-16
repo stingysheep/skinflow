@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ClipboardList, RefreshCw, XCircle } from 'lucide-react'
 import { Button, FeedbackState } from '../../../shared/components'
+import { useListingNotifications } from '../../../shared/hooks/useListingNotifications'
 import { cancelListingItems, getListingRequests, reconcileListingRequests, type ListingRequest } from '../api/listingsApi'
 import '../listings.css'
 
@@ -14,6 +15,7 @@ export function ListingsPage() {
   const [syncing, setSyncing] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [cancelling, setCancelling] = useState(false)
+  const { revision } = useListingNotifications()
   const requestInFlight = useRef(false)
   async function load(initial = false) {
     if (requestInFlight.current) return
@@ -39,7 +41,7 @@ export function ListingsPage() {
     void load(true)
     const timer = window.setInterval(() => void load(), 60_000)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [revision])
   async function sync() {
     if (syncing) return
     setSyncing(true)

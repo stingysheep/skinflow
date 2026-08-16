@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
-import { ArrowDownToLine, ArrowUpFromLine, CheckCircle2, TriangleAlert, WalletCards } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpFromLine, TriangleAlert, WalletCards } from 'lucide-react'
 import { Button, Dialog } from '../../../shared/components'
+import { useListingNotifications } from '../../../shared/hooks/useListingNotifications'
 import { submitListing } from '../api/inventoryApi'
-import { getListingRequest, type ListingRequest } from '../../listings/api/listingsApi'
 import type { ListingPreview } from '../model/types'
 
 type Props = {
@@ -34,8 +34,7 @@ export function ListingPreviewDialog({ preview, open, onOpenChange, onSubmitted 
   const [prices, setPrices] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const [submittedRequest, setSubmittedRequest] = useState<ListingRequest | null>(null)
-  const [trackingPhase, setTrackingPhase] = useState<'idle' | 'waiting' | 'success' | 'failed'>('idle')
+  const { trackListingRequest } = useListingNotifications()
   const groups = useMemo(() => groupPreviewItems(preview?.items ?? []), [preview])
   const pricedGroups = useMemo(() => groups.map((group) => applyBuyerPrice(group, prices[group.name])), [groups, prices])
   const totals = useMemo(() => pricedGroups.reduce((sum, group) => ({
@@ -47,69 +46,30 @@ export function ListingPreviewDialog({ preview, open, onOpenChange, onSubmitted 
     if (!preview) return
     setPrices(Object.fromEntries(groups.map((group) => [group.name, (group.buyerPays / 100).toFixed(2)])))
     setSubmitError(null)
-    setSubmittedRequest(null)
-    setTrackingPhase('idle')
   }, [groups, preview])
-
-  useEffect(() => {
-    const requestId = submittedRequest?.id
-    if (!requestId || trackingPhase === 'success' || trackingPhase === 'failed') return
-    const controller = new AbortController()
-    const poll = async () => {
-      try {
-        const next = await getListingRequest(requestId, controller.signal)
-        setSubmittedRequest(next)
-        const statuses = next.items.map((item) => item.status)
-        if (statuses.some((status) => status === 'failed')) setTrackingPhase('failed')
-        else if (statuses.length > 0 && statuses.every((status) => status === 'active')) setTrackingPhase('success')
-        else setTrackingPhase('waiting')
-      } catch { /* keep polling while Steam is processing */ }
-    }
-    void poll()
-    const timer = window.setInterval(() => void poll(), 1000)
-    return () => { window.clearInterval(timer); controller.abort() }
-  }, [submittedRequest?.id, trackingPhase])
-
-  useEffect(() => {
-    if (trackingPhase !== 'success') return
-    const timer = window.setTimeout(() => onOpenChange(false), 5000)
-    return () => window.clearTimeout(timer)
-  }, [onOpenChange, trackingPhase])
 
   async function submit() {
     if (!preview) return
-    const parsed = Object.fromEntries(groups.map((group) => {
+    const hasInvalidPrice = groups.some((group) => {
       const value = Number(prices[group.name])
-      return [group.name, Number.isFinite(value) && value > 0 ? Math.round(value * 100) : 0]
-    }))
-    if (Object.values(parsed).some((value) => value < 1)) {
+      return !Number.isFinite(value) || value <= 0
+    })
+    if (hasInvalidPrice) {
       setSubmitError('请为每个物品组填写有效的买家支付价。')
       return
     }
-    if (pricedGroups.some((group) => !group.priceReachable)) {
-      setSubmitError('当前手续费规则无法精确产生该买家支付价，请调整到相邻可达金额。')
-      return
-    }
+    const parsed = Object.fromEntries(pricedGroups.map((group) => [group.name, group.buyerPays]))
     setSubmitting(true)
     setSubmitError(null)
     try {
       const request = await submitListing(preview.id, parsed)
-      setSubmittedRequest({ id: request.id, status: request.status, created_at: Date.now(), completed_at: null, items: request.items.map((item, index) => ({
-        id: item.id ?? preview.items[index]?.id ?? String(index),
-        assetid: item.assetid ?? preview.items[index]?.assetid ?? String(index),
-        status: item.status,
-        steam_listing_id: item.steam_listing_id,
-        message: item.message,
-        market_hash_name: item.market_hash_name ?? preview.items[index]?.market_hash_name ?? '',
-        display_name: item.display_name ?? preview.items[index]?.display_name ?? '',
-        image_url: item.image_url ?? preview.items[index]?.image_url ?? '',
-        wear_text: item.wear_text ?? null,
-        cost_each: item.cost_each ?? preview.items[index]?.cost_each ?? null,
-        buyer_pays: item.buyer_pays ?? preview.items[index]?.buyer_pays ?? 0,
-        seller_proceeds: item.seller_proceeds ?? preview.items[index]?.seller_proceeds ?? 0,
-      })) })
-      setTrackingPhase('waiting')
+      if (request.items.some((item) => item.status === 'failed')) {
+        setSubmitError('Steam 拒绝了部分挂单，请查看挂单记录中的失败原因。')
+        return
+      }
+      trackListingRequest(request.id)
       onSubmitted()
+      onOpenChange(false)
     } catch (reason) {
       setSubmitError(reason instanceof Error ? reason.message : '提交挂单失败，请稍后重试。')
     } finally {
@@ -139,10 +99,7 @@ export function ListingPreviewDialog({ preview, open, onOpenChange, onSubmitted 
       </div>)}
       <div className="listing-caution"><TriangleAlert size={15} aria-hidden="true" /><span>此操作会向 Steam 提交真实挂单，不会自动执行手机确认，也不会提前记为成交。</span></div>
       {submitError ? <div className="listing-action-error" role="alert">{submitError}</div> : null}
-      {trackingPhase === 'waiting' ? <div className="listing-tracking is-waiting"><span className="tracking-spinner" />正在读取 Steam 上架状态…<small>手机确认完成后会自动更新。</small></div> : null}
-      {trackingPhase === 'success' ? <div className="listing-tracking is-success"><CheckCircle2 size={17} />已确认全部挂单成功，5 秒后自动关闭。</div> : null}
-      {trackingPhase === 'failed' ? <div className="listing-tracking is-failed" role="alert"><TriangleAlert size={17} />部分挂单失败，请返回调整后重试。</div> : null}
-      <div className="dialog-actions"><Button variant="ghost" onClick={() => onOpenChange(false)}>{trackingPhase === 'failed' ? '返回修改' : '手动关闭'}</Button>{trackingPhase === 'idle' ? <Button variant="primary" loading={submitting} onClick={() => void submit()}>确认并提交</Button> : null}</div>
+      <div className="dialog-actions"><Button variant="ghost" onClick={() => onOpenChange(false)}>手动关闭</Button><Button variant="primary" loading={submitting} onClick={() => void submit()}>确认并提交</Button></div>
     </div> : null}
   </Dialog>
 }
@@ -209,27 +166,29 @@ function applyBuyerPrice(group: PreviewGroup, rawPrice: string | undefined): Pre
   const value = Number(rawPrice)
   if (!Number.isFinite(value) || value <= 0) return group
   const buyerPays = Math.round(value * 100)
-  const receive = receiveFromBuyerPays(buyerPays)
-  if (receive === null) return { ...group, buyerPays, steamFee: 0, publisherFee: 0, proceeds: 0, ratioPpm: null, priceReachable: false }
-  const steamFee = receive > 0 ? Math.max(5, Math.floor(receive * 0.05)) : 0
-  const publisherFee = receive > 0 ? Math.max(5, Math.floor(receive * 0.10)) : 0
-  const ratio = group.costEach !== null && receive > 0 ? Math.floor(group.costEach * 1_000_000 / receive) : null
-  return { ...group, buyerPays, steamFee: steamFee * group.quantity, publisherFee: publisherFee * group.quantity, proceeds: receive * group.quantity, ratioPpm: ratio }
+  const breakdown = feeBreakdownFromBuyerPays(buyerPays)
+  if (breakdown === null) return { ...group, buyerPays, steamFee: 0, publisherFee: 0, proceeds: 0, ratioPpm: null, priceReachable: false }
+  const ratio = group.costEach !== null && breakdown.sellerProceeds > 0 ? Math.floor(group.costEach * 1_000_000 / breakdown.sellerProceeds) : null
+  return { ...group, buyerPays: breakdown.buyerPays, steamFee: breakdown.steamFee * group.quantity, publisherFee: breakdown.publisherFee * group.quantity, proceeds: breakdown.sellerProceeds * group.quantity, ratioPpm: ratio }
 }
 
-function receiveFromBuyerPays(buyerPays: number): number | null {
+function feeBreakdownFromBuyerPays(buyerPays: number): { buyerPays: number; steamFee: number; publisherFee: number; sellerProceeds: number } | null {
   let low = 1
   let high = buyerPays
+  let lower: ReturnType<typeof feeBreakdownFromBuyerPays> = null
   while (low <= high) {
     const receive = Math.floor((low + high) / 2)
     const steam = Math.max(5, Math.floor(receive * 0.05))
     const publisher = Math.max(5, Math.floor(receive * 0.10))
     const total = receive + steam + publisher
-    if (total === buyerPays) return receive
-    if (total < buyerPays) low = receive + 1
+    if (total === buyerPays) return { buyerPays: total, steamFee: steam, publisherFee: publisher, sellerProceeds: receive }
+    if (total < buyerPays) {
+      lower = { buyerPays: total, steamFee: steam, publisherFee: publisher, sellerProceeds: receive }
+      low = receive + 1
+    }
     else high = receive - 1
   }
-  return null
+  return lower
 }
 
 const money = (value: number | null | undefined) => value == null ? '--' : `¥${(value / 100).toFixed(2)}`

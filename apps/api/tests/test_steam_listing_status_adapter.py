@@ -102,6 +102,32 @@ def test_status_adapter_ignores_purchase_history_for_pending_listing() -> None:
     assert adapter.statuses(("asset-1",)) == {}
 
 
+def test_status_adapter_marks_missing_listing_as_cancelled_after_successful_sync() -> None:
+    adapter = SteamListingStatusAdapter(
+        session(),
+        Client(
+            active={"success": True, "results_html": "", "hovers": ""},
+            history={"success": True, "results_html": "", "hovers": ""},
+        ),
+    )
+
+    status = adapter.statuses(("asset-1",))["asset-1"]
+
+    assert status.status == "cancelled"
+
+
+def test_status_adapter_does_not_cancel_missing_listing_when_history_is_paginated() -> None:
+    adapter = SteamListingStatusAdapter(
+        session(),
+        Client(
+            active={"success": True, "results_html": "", "hovers": ""},
+            history={"success": True, "total_count": 101, "results_html": "", "hovers": ""},
+        ),
+    )
+
+    assert adapter.statuses(("asset-1",)) == {}
+
+
 def test_market_timestamp_uses_local_year_for_chinese_steam_date() -> None:
     local_tz = timezone(timedelta(hours=8))
     now = datetime(2026, 8, 16, 23, 0, tzinfo=local_tz)

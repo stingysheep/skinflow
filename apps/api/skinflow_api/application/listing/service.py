@@ -8,8 +8,10 @@ from threading import Thread
 from skinflow_api.domain.listing import ListingDecision
 from skinflow_api.domain.listing.errors import InvalidListing
 from skinflow_api.domain.pricing import (
+    FeeBreakdown,
     Tier,
     calculate_net,
+    receive_to_pays,
     recommend_listing_price,
     steam_cny_policy,
 )
@@ -89,7 +91,7 @@ class ListingService:
             if item["market_hash_name"] not in normalized:
                 continue
             buyer_pays = normalized[item["market_hash_name"]]
-            fees = calculate_net(buyer_pays, policy)
+            fees = _fee_breakdown_for_buyer_pays(buyer_pays, policy)
             cost_each = item["cost_each"]
             ratio = (
                 cost_each * 1_000_000 // fees.seller_proceeds
@@ -99,7 +101,7 @@ class ListingService:
             updates.append(
                 {
                     "assetid": item["assetid"],
-                    "buyer_pays": buyer_pays,
+                    "buyer_pays": fees.buyer_pays,
                     "steam_fee": fees.steam_fee,
                     "publisher_fee": fees.publisher_fee,
                     "seller_proceeds": fees.seller_proceeds,
@@ -261,3 +263,25 @@ class ListingService:
         from .models import ListingGatewayResult
 
         return ListingGatewayResult(False, False, None, f"uncertain:{message}")
+
+
+def _fee_breakdown_for_buyer_pays(buyer_pays: int, policy) -> FeeBreakdown:
+    try:
+        return calculate_net(buyer_pays, policy)
+    except ValueError:
+        # Steam prices have small gaps caused by the minimum fee rounding. Use
+        # the nearest reachable price below the user's target instead of
+        # dropping all preview calculations for values such as 20.00 yuan.
+        lower: FeeBreakdown | None = None
+        low, high = 1, buyer_pays
+        while low <= high:
+            receive = (low + high) // 2
+            candidate = receive_to_pays(receive, policy)
+            if candidate.buyer_pays <= buyer_pays:
+                lower = candidate
+                low = receive + 1
+            else:
+                high = receive - 1
+        if lower is None:
+            raise
+        return lower

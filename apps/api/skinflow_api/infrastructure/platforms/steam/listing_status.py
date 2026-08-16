@@ -46,6 +46,8 @@ class SteamListingStatusAdapter:
                 f"{MY_HISTORY_URL}?start=0&count=100&l=schinese&currency=23",
                 headers=headers,
             )
+            if not active.get("success", True) or not history.get("success", True):
+                raise UpstreamUnavailable("Steam market response rejected")
         except UpstreamUnavailable as error:
             if error.status_code in {401, 403}:
                 self._session.mark_expired()
@@ -53,8 +55,15 @@ class SteamListingStatusAdapter:
             raise
         result: dict[str, SteamListingStatus] = {}
         wanted = set(listing_ids)
-        _collect_statuses(result, wanted, active, "active")
-        _collect_statuses(result, wanted, history, "history")
+        observed = _collect_statuses(result, wanted, active, "active")
+        observed.update(_collect_statuses(result, wanted, history, "history"))
+        history_complete = int(history.get("total_count") or 0) <= 100
+        for missing in wanted.difference(result).difference(observed) if history_complete else ():
+            result[missing] = SteamListingStatus(
+                listing_id=missing,
+                status="cancelled",
+                external_ref=f"steam:market-missing:{missing}",
+            )
         return result
 
 
@@ -110,10 +119,11 @@ def _collect_statuses(
     wanted: set[str],
     payload: dict,
     source: str,
-) -> None:
+) -> set[str]:
     parser = _MarketRowsParser()
     parser.feed(str(payload.get("results_html") or ""))
     assets = _hover_assets(str(payload.get("hovers") or ""))
+    observed: set[str] = set()
     for row in parser.rows:
         assetid = assets.get(row.row_id, "")
         listing_match = LISTING_ROW_PATTERN.fullmatch(row.row_id)
@@ -121,6 +131,7 @@ def _collect_statuses(
         keys = tuple(key for key in (listing_id, assetid) if key in wanted)
         if not keys:
             continue
+        observed.update(keys)
         status = "active" if source == "active" else _history_status(row)
         if status is None:
             continue
@@ -139,6 +150,7 @@ def _collect_statuses(
         for key in keys:
             if key not in result:
                 result[key] = parsed
+    return observed
 
 
 def _hover_assets(script: str) -> dict[str, str]:

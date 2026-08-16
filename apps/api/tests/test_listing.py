@@ -272,3 +272,16 @@ def test_custom_group_price_updates_all_expanded_assets(tmp_path: Path) -> None:
 
     assert updated["items"][0]["buyer_pays"] == 300
     assert updated["items"][0]["seller_proceeds"] > 0
+
+
+def test_custom_price_uses_nearest_reachable_steam_total(tmp_path: Path) -> None:
+    repository, assetid = _seed(tmp_path / "custom-unreachable-price.db")
+    service = ListingService(
+        repository, repository, Gateway(ListingGatewayResult(True, False, "1", None))
+    )
+
+    preview = service.create_preview((ListingSelection("steam", 730, "2", assetid),))
+    updated = service.update_preview_prices(preview["id"], {"AK-47 | Slate": 2_000})
+
+    assert updated["items"][0]["buyer_pays"] == 1_998
+    assert updated["items"][0]["seller_proceeds"] > 0

@@ -505,8 +505,10 @@ class SqliteListingRepository:
             if request is None:
                 return None
             items = self._connection.execute(
-                "SELECT i.*,p.market_hash_name,p.buyer_pays,p.seller_proceeds "
+                "SELECT i.*,r.created_at request_created_at,p.market_hash_name,"
+                "p.buyer_pays,p.seller_proceeds "
                 "FROM listing_item i JOIN listing_preview_item p ON p.id=i.preview_item_id "
+                "JOIN listing_request r ON r.id=i.request_id "
                 "WHERE i.request_id=? ORDER BY i.rowid",
                 (request_id,),
             ).fetchall()
