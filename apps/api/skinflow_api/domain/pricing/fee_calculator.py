@@ -37,7 +37,9 @@ def calculate_fee(gross: int, rate_ppm: int, minimum: int, policy: FeePolicy | N
 
 
 def receive_to_pays(receive: int, policy: FeePolicy) -> FeeBreakdown:
-    base = _to_valid_market_price(receive, max(policy.min_steam_fee, policy.min_publisher_fee), policy)
+    base = _to_valid_market_price(
+        receive, max(policy.min_steam_fee, policy.min_publisher_fee), policy
+    )
     steam_fee = calculate_fee(base, policy.steam_rate_ppm, policy.min_steam_fee, policy)
     publisher_fee = calculate_fee(base, policy.publisher_rate_ppm, policy.min_publisher_fee, policy)
     buyer_pays = base + steam_fee + publisher_fee

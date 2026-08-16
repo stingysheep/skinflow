@@ -10,8 +10,8 @@ from skinflow_api.domain.pricing import (
     recommend_listing_price,
     steam_cny_policy,
 )
-from skinflow_api.domain.pricing.fee_calculator import calculate_net
 from skinflow_api.domain.pricing.errors import BelowMinimumPrice, NegativeProceeds, UnreachablePrice
+from skinflow_api.domain.pricing.fee_calculator import calculate_net
 
 from .errors import ScanConfigurationError
 from .models import AcquisitionPlatform, ScanJob, ScanRequest, ScanStatus
@@ -98,8 +98,11 @@ class ScanService:
         """Fetch CSQAQ history when a result row is opened, not for every scan row."""
         self._require(job_id)
         result = next(
-            (item for item in self._persistence.list_results(job_id)
-             if item.get("market_hash_name") == market_hash_name),
+            (
+                item
+                for item in self._persistence.list_results(job_id)
+                if item.get("market_hash_name") == market_hash_name
+            ),
             None,
         )
         if result is None:
@@ -278,10 +281,12 @@ class ScanService:
                 self._recommendation(snapshot),
             )
             payload["job_id"] = job_id
-            payload.update({
-                "data_incomplete": True,
-                "unavailable_reason": reason_code,
-            })
+            payload.update(
+                {
+                    "data_incomplete": True,
+                    "unavailable_reason": reason_code,
+                }
+            )
             accepted += 1
             current.result_count += 1
             self._persistence.persist_result_and_event(
@@ -305,7 +310,9 @@ class ScanService:
                 if item_nameid is None:
                     persist_partial(candidate, "STEAM_NAMEID_UNRESOLVED")
                     continue
-                futures[executor.submit(self._analyze_candidate, job_id, candidate, item_nameid)] = candidate
+                futures[
+                    executor.submit(self._analyze_candidate, job_id, candidate, item_nameid)
+                ] = candidate
 
         try:
             submit_available()
@@ -358,7 +365,10 @@ class ScanService:
         now = int(datetime.now(UTC).timestamp() * 1000)
         if AcquisitionPlatform.BUFF in request.acquisition_platforms and candidate.buff_summary_ask:
             tiers.append(MarketTier(MarketSide.BUFF_ASK, candidate.buff_summary_ask, 1))
-        if AcquisitionPlatform.YOUPIN in request.acquisition_platforms and candidate.youpin_summary_ask:
+        if (
+            AcquisitionPlatform.YOUPIN in request.acquisition_platforms
+            and candidate.youpin_summary_ask
+        ):
             tiers.append(MarketTier(MarketSide.YOUPIN_ASK, candidate.youpin_summary_ask, 1))
         if candidate.steam_summary_bid:
             tiers.append(MarketTier(MarketSide.STEAM_BID, candidate.steam_summary_bid, 1))
@@ -379,9 +389,7 @@ class ScanService:
             steam_median_price=candidate.steam_transaction_price,
         )
 
-    def _analyze_candidate(
-        self, job_id: str, candidate: Candidate, item_nameid: int
-    ) -> tuple:
+    def _analyze_candidate(self, job_id: str, candidate: Candidate, item_nameid: int) -> tuple:
         request = self._require(job_id).request
         snapshot = self._market.fetch_snapshot(
             candidate,
@@ -417,17 +425,13 @@ class ScanService:
     @staticmethod
     def _acquisition_side(snapshot: MarketSnapshot) -> MarketSide:
         available = [
-            side
-            for side in (MarketSide.BUFF_ASK, MarketSide.YOUPIN_ASK)
-            if snapshot.for_side(side)
+            side for side in (MarketSide.BUFF_ASK, MarketSide.YOUPIN_ASK) if snapshot.for_side(side)
         ]
         if not available:
             raise ValueError("snapshot has no acquisition asks")
         return min(available, key=lambda side: snapshot.for_side(side)[0].price)
 
-    def _matches_actual_filters(
-        self, request: ScanRequest, snapshot: MarketSnapshot
-    ) -> bool:
+    def _matches_actual_filters(self, request: ScanRequest, snapshot: MarketSnapshot) -> bool:
         side = self._acquisition_side(snapshot)
         price = snapshot.for_side(side)[0].price
         if request.min_price is not None and price < request.min_price:

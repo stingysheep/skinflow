@@ -110,8 +110,7 @@ class SqliteListingRepository:
                 "market_snapshot_job_id TEXT NOT NULL DEFAULT ''"
             )
         item_columns = {
-            row[1]
-            for row in self._connection.execute("PRAGMA table_info(listing_item)").fetchall()
+            row[1] for row in self._connection.execute("PRAGMA table_info(listing_item)").fetchall()
         }
         for name, definition in {
             "last_checked_at": "INTEGER",
@@ -121,9 +120,7 @@ class SqliteListingRepository:
             "reconcile_error": "TEXT",
         }.items():
             if name not in item_columns:
-                self._connection.execute(
-                    f"ALTER TABLE listing_item ADD COLUMN {name} {definition}"
-                )
+                self._connection.execute(f"ALTER TABLE listing_item ADD COLUMN {name} {definition}")
         self._connection.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS listing_item_sale_fill "
             "ON listing_item(sale_fill_id) WHERE sale_fill_id IS NOT NULL"
@@ -136,19 +133,29 @@ class SqliteListingRepository:
         job_id = str(uuid4())
         with self._lock, self._connection:
             self._connection.execute(
-                "INSERT INTO scan_job(" 
-                "id,status,source_mode,candidate_limit,depth_limit_per_candidate," 
-                "operation_mode,acquisition_platforms,min_price,max_price,min_daily_volume," 
+                "INSERT INTO scan_job("
+                "id,status,source_mode,candidate_limit,depth_limit_per_candidate,"
+                "operation_mode,acquisition_platforms,min_price,max_price,min_daily_volume,"
                 "result_count,next_sequence) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    job_id, "succeeded", "listing_preview", 1, 10, "listing", "[]",
-                    None, None, 0, 0, 1,
+                    job_id,
+                    "succeeded",
+                    "listing_preview",
+                    1,
+                    10,
+                    "listing",
+                    "[]",
+                    None,
+                    None,
+                    0,
+                    0,
+                    1,
                 ),
             )
             self._connection.execute(
-                "INSERT INTO market_snapshot(" 
-                "id,job_id,market_hash_name,currency,appid,csqaq_observed_at,buff_observed_at," 
-                "youpin_observed_at,steam_observed_at,daily_volume_observed_at,daily_volume," 
+                "INSERT INTO market_snapshot("
+                "id,job_id,market_hash_name,currency,appid,csqaq_observed_at,buff_observed_at,"
+                "youpin_observed_at,steam_observed_at,daily_volume_observed_at,daily_volume,"
                 "steam_median_price,fee_policy_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     snapshot_id,
@@ -215,7 +222,8 @@ class SqliteListingRepository:
 
         with self._lock:
             rows = self._connection.execute(
-                "SELECT payload FROM scan_event WHERE type IN ('result.created','candidate.discovered') "
+                "SELECT payload FROM scan_event WHERE type IN "
+                "('result.created','candidate.discovered') "
                 "AND json_extract(payload,'$.market_hash_name')=? "
                 "ORDER BY rowid DESC LIMIT 5",
                 (market_hash_name,),
@@ -262,9 +270,18 @@ class SqliteListingRepository:
                 (selection.platform, selection.appid, selection.contextid, selection.assetid),
             ).fetchone()
         asset = InventoryAsset(
-            row["platform"], row["appid"], row["contextid"], row["assetid"],
-            row["market_hash_name"], row["display_name"], row["image_url"], row["classid"],
-            row["instanceid"], bool(row["marketable"]), bool(row["tradable"]), row["hold_text"],
+            row["platform"],
+            row["appid"],
+            row["contextid"],
+            row["assetid"],
+            row["market_hash_name"],
+            row["display_name"],
+            row["image_url"],
+            row["classid"],
+            row["instanceid"],
+            bool(row["marketable"]),
+            bool(row["tradable"]),
+            row["hold_text"],
             row["wear_text"],
         )
         return ListingContext(
@@ -276,9 +293,7 @@ class SqliteListingRepository:
             bool(active),
         )
 
-    def contexts_for_group(
-        self, selection: ListingGroupSelection
-    ) -> tuple[ListingContext, ...]:
+    def contexts_for_group(self, selection: ListingGroupSelection) -> tuple[ListingContext, ...]:
         """Resolve identical inventory into deterministic, oldest-first assets."""
         with self._lock:
             rows = self._connection.execute(
@@ -325,16 +340,29 @@ class SqliteListingRepository:
             )
             for item in decisions:
                 self._connection.execute(
-                    "INSERT INTO listing_preview_item(" 
-                    "id,preview_id,platform,appid,contextid,assetid,market_hash_name," 
-                    "market_snapshot_id,market_snapshot_job_id,buyer_pays,steam_fee," 
+                    "INSERT INTO listing_preview_item("
+                    "id,preview_id,platform,appid,contextid,assetid,market_hash_name,"
+                    "market_snapshot_id,market_snapshot_job_id,buyer_pays,steam_fee,"
                     "publisher_fee,seller_proceeds,cost_each,ratio_ppm,fee_policy_version) "
                     "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (str(uuid4()), preview_id, item.platform, item.appid, item.contextid,
-                     item.assetid, item.market_hash_name, item.snapshot_id, item.snapshot_job_id,
-                     item.buyer_pays,
-                     item.steam_fee, item.publisher_fee, item.seller_proceeds, item.cost_each,
-                     item.ratio_ppm, item.fee_policy_version),
+                    (
+                        str(uuid4()),
+                        preview_id,
+                        item.platform,
+                        item.appid,
+                        item.contextid,
+                        item.assetid,
+                        item.market_hash_name,
+                        item.snapshot_id,
+                        item.snapshot_job_id,
+                        item.buyer_pays,
+                        item.steam_fee,
+                        item.publisher_fee,
+                        item.seller_proceeds,
+                        item.cost_each,
+                        item.ratio_ppm,
+                        item.fee_policy_version,
+                    ),
                 )
         return self.get_preview(preview_id) or {}
 
@@ -400,19 +428,31 @@ class SqliteListingRepository:
             ).fetchall()
             for item in items:
                 self._connection.execute(
-                    "INSERT INTO listing_item(" 
-                    "id,request_id,preview_item_id,platform,appid,contextid,assetid,status," 
-                    "steam_listing_id,message,last_checked_at,sold_at,sold_receive_total," 
+                    "INSERT INTO listing_item("
+                    "id,request_id,preview_item_id,platform,appid,contextid,assetid,status,"
+                    "steam_listing_id,message,last_checked_at,sold_at,sold_receive_total,"
                     "sale_fill_id,reconcile_error) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (str(uuid4()), request_id, item["id"], item["platform"], item["appid"],
-                     item["contextid"], item["assetid"], "submitting", None, None,
-                     None, None, None, None, None),
+                    (
+                        str(uuid4()),
+                        request_id,
+                        item["id"],
+                        item["platform"],
+                        item["appid"],
+                        item["contextid"],
+                        item["assetid"],
+                        "submitting",
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ),
                 )
         return self.get_request(request_id) or {}
 
-    def record_result(
-        self, request_id: str, decision: dict, result: ListingGatewayResult
-    ) -> None:
+    def record_result(self, request_id: str, decision: dict, result: ListingGatewayResult) -> None:
         if result.accepted:
             status = "pending_confirmation" if result.needs_confirmation else "active"
         elif result.message and result.message.startswith("uncertain:"):
@@ -423,14 +463,23 @@ class SqliteListingRepository:
             self._connection.execute(
                 "UPDATE listing_item SET status=?,steam_listing_id=?,message=? "
                 "WHERE request_id=? AND platform=? AND appid=? AND contextid=? AND assetid=?",
-                (status, result.listing_id, result.message, request_id, decision["platform"],
-                 decision["appid"], decision["contextid"], decision["assetid"]),
+                (
+                    status,
+                    result.listing_id,
+                    result.message,
+                    request_id,
+                    decision["platform"],
+                    decision["appid"],
+                    decision["contextid"],
+                    decision["assetid"],
+                ),
             )
 
     def complete_request(self, request_id: str) -> dict:
         with self._lock, self._connection:
             statuses = [
-                row[0] for row in self._connection.execute(
+                row[0]
+                for row in self._connection.execute(
                     "SELECT status FROM listing_item WHERE request_id=?", (request_id,)
                 ).fetchall()
             ]
@@ -576,8 +625,7 @@ class SqliteListingRepository:
             (snapshot_id, MarketSide.STEAM_ASK),
         ).fetchall()
         return tuple(
-            MarketTier(MarketSide.STEAM_ASK, row["price"], row["quantity"])
-            for row in rows
+            MarketTier(MarketSide.STEAM_ASK, row["price"], row["quantity"]) for row in rows
         )
 
     def _tiers(self, snapshot_id: str, side: MarketSide) -> list[dict]:

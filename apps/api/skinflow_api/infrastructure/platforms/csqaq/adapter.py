@@ -54,7 +54,11 @@ class CsqaqAdapter(CandidateSource):
             platform_query = "BUFF"
         wanted = set(request.manual_names)
         with self._candidate_cache_lock:
-            cached = {name: self._candidate_cache[name] for name in wanted if name in self._candidate_cache}
+            cached = {
+                name: self._candidate_cache[name]
+                for name in wanted
+                if name in self._candidate_cache
+            }
         if wanted and wanted <= cached.keys():
             return tuple(cached[name] for name in request.manual_names)
 
@@ -132,11 +136,9 @@ class CsqaqAdapter(CandidateSource):
             wanted = set(request.manual_names)
             merged = {**cached, **candidates_by_name}
             candidates = tuple(merged[name] for name in request.manual_names if name in merged)
-        return tuple(
-            candidate
-            for candidate in candidates
-            if _matches_request(candidate, request)
-        )[: request.candidate_limit]
+        return tuple(candidate for candidate in candidates if _matches_request(candidate, request))[
+            : request.candidate_limit
+        ]
 
     def lookup_candidate(
         self,
@@ -178,7 +180,10 @@ class CsqaqAdapter(CandidateSource):
                 goods = (detail.get("data") or {}).get("goods_info") or {}
                 candidates = parse_candidates([goods])
                 candidate = candidates[0] if candidates else None
-                if candidate and candidate.market_hash_name.casefold() == market_hash_name.casefold():
+                if (
+                    candidate
+                    and candidate.market_hash_name.casefold() == market_hash_name.casefold()
+                ):
                     with self._candidate_cache_lock:
                         self._candidate_cache[market_hash_name] = candidate
                     return candidate

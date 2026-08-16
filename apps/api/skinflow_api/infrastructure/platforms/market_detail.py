@@ -27,8 +27,12 @@ class CsqaqMarketDetailProvider(MarketDetailProvider):
 
     def refresh(self, market_hash_name: str) -> bool:
         cached_trend = self._store.read_market_trend(market_hash_name)
-        cached_good_id = getattr(self._store, "read_csqaq_good_id", lambda _name: None)(market_hash_name)
-        localized_name = getattr(self._store, "read_localized_name", lambda _name: None)(market_hash_name)
+        cached_good_id = getattr(self._store, "read_csqaq_good_id", lambda _name: None)(
+            market_hash_name
+        )
+        localized_name = getattr(self._store, "read_localized_name", lambda _name: None)(
+            market_hash_name
+        )
         try:
             if cached_good_id:
                 candidates = ()
@@ -41,17 +45,24 @@ class CsqaqMarketDetailProvider(MarketDetailProvider):
                         source_mode="manual",
                         candidate_limit=1,
                         manual_names=(market_hash_name,),
-                        acquisition_platforms=(AcquisitionPlatform.BUFF, AcquisitionPlatform.YOUPIN),
+                        acquisition_platforms=(
+                            AcquisitionPlatform.BUFF,
+                            AcquisitionPlatform.YOUPIN,
+                        ),
                     )
                 )
         except Exception:
             return False
-        candidate = candidates[0] if candidates else Candidate(
-            market_hash_name=market_hash_name,
-            name=market_hash_name,
-            image_url="",
-            buff_goods_id=0,
-            good_id=cached_good_id or 0,
+        candidate = (
+            candidates[0]
+            if candidates
+            else Candidate(
+                market_hash_name=market_hash_name,
+                name=market_hash_name,
+                image_url="",
+                buff_goods_id=0,
+                good_id=cached_good_id or 0,
+            )
         )
         chart_loaded = bool(cached_trend)
         if candidate.good_id > 0 and not cached_trend:

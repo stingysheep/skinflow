@@ -7,20 +7,22 @@ from skinflow_api.application.scan.upstream_errors import (
     CsqaqAccessDenied,
     UpstreamUnavailable,
 )
+from skinflow_api.infrastructure.http.rate_limiter import PlatformRateLimiter
 from skinflow_api.infrastructure.platforms.buff.parser import parse_sell_orders
 from skinflow_api.infrastructure.platforms.csqaq.adapter import CsqaqAdapter
 from skinflow_api.infrastructure.platforms.csqaq.chart import parse_chart
 from skinflow_api.infrastructure.platforms.csqaq.parser import parse_candidates
 from skinflow_api.infrastructure.platforms.steam.nameid_resolver import JsonNameIdResolver
 from skinflow_api.infrastructure.platforms.steam.parser import parse_histogram
-from skinflow_api.infrastructure.http.rate_limiter import PlatformRateLimiter
 
 
 def test_csqaq_parser_skips_invalid_rows() -> None:
-    result = parse_candidates([
-        {"id": 1, "buff_id": 2, "market_hash_name": "AK-47 | Slate", "name": "Slate"},
-        {"id": "bad", "buff_id": 0, "market_hash_name": "invalid"},
-    ])
+    result = parse_candidates(
+        [
+            {"id": 1, "buff_id": 2, "market_hash_name": "AK-47 | Slate", "name": "Slate"},
+            {"id": "bad", "buff_id": 0, "market_hash_name": "invalid"},
+        ]
+    )
     assert len(result) == 1
     assert result[0].buff_goods_id == 2
 
@@ -44,9 +46,29 @@ def test_csqaq_candidate_source_reads_a_second_page_for_scan_backfill() -> None:
         def request_json(self, _url, *, body, **_kwargs):
             self.pages.append(body["page_index"])
             if body["page_index"] == 1:
-                return {"data": [{"id": 1, "buff_id": 11, "market_hash_name": "One", "buff_sell_price": 1, "turnover_number": 1}]}
+                return {
+                    "data": [
+                        {
+                            "id": 1,
+                            "buff_id": 11,
+                            "market_hash_name": "One",
+                            "buff_sell_price": 1,
+                            "turnover_number": 1,
+                        }
+                    ]
+                }
             if body["page_index"] == 2:
-                return {"data": [{"id": 2, "buff_id": 22, "market_hash_name": "Two", "buff_sell_price": 3, "turnover_number": 1}]}
+                return {
+                    "data": [
+                        {
+                            "id": 2,
+                            "buff_id": 22,
+                            "market_hash_name": "Two",
+                            "buff_sell_price": 3,
+                            "turnover_number": 1,
+                        }
+                    ]
+                }
             return {"data": []}
 
     client = PagedClient()
@@ -68,8 +90,28 @@ def test_csqaq_manual_lookup_continues_until_named_item_is_found() -> None:
         def request_json(self, _url, *, body, **_kwargs):
             self.pages.append(body["page_index"])
             if body["page_index"] < 3:
-                return {"data": [{"id": body["page_index"], "buff_id": 11, "market_hash_name": f"Other {body['page_index']}", "buff_sell_price": 1, "turnover_number": 1}]}
-            return {"data": [{"id": 3, "buff_id": 33, "market_hash_name": "Wanted", "buff_sell_price": 1, "turnover_number": 1}]}
+                return {
+                    "data": [
+                        {
+                            "id": body["page_index"],
+                            "buff_id": 11,
+                            "market_hash_name": f"Other {body['page_index']}",
+                            "buff_sell_price": 1,
+                            "turnover_number": 1,
+                        }
+                    ]
+                }
+            return {
+                "data": [
+                    {
+                        "id": 3,
+                        "buff_id": 33,
+                        "market_hash_name": "Wanted",
+                        "buff_sell_price": 1,
+                        "turnover_number": 1,
+                    }
+                ]
+            }
 
     client = ManualClient()
     adapter = CsqaqAdapter(
@@ -89,18 +131,22 @@ def test_csqaq_direct_lookup_resolves_items_outside_ranked_pages() -> None:
         def request_json(self, url, **_kwargs):
             if "/search/suggest" in url:
                 return {"data": [{"id": "21656", "value": "法玛斯 | 灰色幽灵 (崭新出厂)"}]}
-            return {"data": {"goods_info": {
-                "id": 21656,
-                "market_hash_name": "FAMAS | Grey Ghost (Factory New)",
-                "name": "法玛斯 | 灰色幽灵 (崭新出厂)",
-                "buff_id": 1,
-                "yyyp_id": 2,
-                "buff_sell_price": 1,
-                "yyyp_sell_price": 1,
-                "steam_sell_price": 1,
-                "steam_buy_price": 1,
-                "turnover_number": 1,
-            }}}
+            return {
+                "data": {
+                    "goods_info": {
+                        "id": 21656,
+                        "market_hash_name": "FAMAS | Grey Ghost (Factory New)",
+                        "name": "法玛斯 | 灰色幽灵 (崭新出厂)",
+                        "buff_id": 1,
+                        "yyyp_id": 2,
+                        "buff_sell_price": 1,
+                        "yyyp_sell_price": 1,
+                        "steam_sell_price": 1,
+                        "steam_buy_price": 1,
+                        "turnover_number": 1,
+                    }
+                }
+            }
 
     candidate = CsqaqAdapter(
         "token", SearchClient(), PlatformRateLimiter("test", concurrency=1, min_interval_seconds=0)
@@ -139,13 +185,17 @@ def test_buff_parser_groups_prices_into_tiers() -> None:
 
 
 def test_steam_parser_differences_cumulative_graph() -> None:
-    tiers = parse_histogram({
-        "buy_order_graph": [["2.23", 1, ""], ["2.22", 3, ""]],
-        "sell_order_graph": [["2.24", 2, ""], ["2.25", 5, ""]],
-    })
+    tiers = parse_histogram(
+        {
+            "buy_order_graph": [["2.23", 1, ""], ["2.22", 3, ""]],
+            "sell_order_graph": [["2.24", 2, ""], ["2.25", 5, ""]],
+        }
+    )
     assert [(tier.side, tier.price, tier.quantity) for tier in tiers] == [
-        ("steam_bid", 223, 1), ("steam_bid", 222, 2),
-        ("steam_ask", 224, 2), ("steam_ask", 225, 3),
+        ("steam_bid", 223, 1),
+        ("steam_bid", 222, 2),
+        ("steam_ask", 224, 2),
+        ("steam_ask", 225, 3),
     ]
 
 
