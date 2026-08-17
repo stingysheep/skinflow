@@ -46,6 +46,10 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "PyInstaller failed with exit code $LASTEXITCODE"
     }
+    & (Join-Path $portablePath "Skinflow.exe") --self-check
+    if ($LASTEXITCODE -ne 0) {
+        throw "Portable self-check failed with exit code $LASTEXITCODE"
+    }
     Compress-Archive -Path (Join-Path $portablePath "*") -DestinationPath $archivePath
 }
 finally {

@@ -34,6 +34,14 @@ def test_icon_is_project_local_and_distinct_from_legacy_path() -> None:
     assert "D:" not in str(icon)
 
 
+def test_frozen_icon_uses_the_bundled_asset(monkeypatch, tmp_path) -> None:
+    from skinflow_desktop import launcher
+
+    monkeypatch.setattr(launcher.sys, "_MEIPASS", str(tmp_path), raising=False)
+
+    assert launcher.desktop_icon_path() == tmp_path / "apps" / "desktop" / "assets" / "skinflow.ico"
+
+
 def test_non_windows_single_instance_is_noop(monkeypatch) -> None:
     from skinflow_desktop import launcher
 

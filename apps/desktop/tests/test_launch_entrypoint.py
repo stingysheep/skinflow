@@ -6,3 +6,4 @@ def test_source_tree_entrypoint_exists_and_bootstraps_paths() -> None:
     source = entrypoint.read_text(encoding="utf-8")
     assert "ROOT / \"api\"" in source
     assert "ROOT / \"desktop\"" in source
+    assert "run_self_check" in source

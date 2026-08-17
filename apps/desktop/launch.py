@@ -14,8 +14,24 @@ else:
     sys.path.insert(0, str(ROOT / "api"))
     sys.path.insert(0, str(ROOT / "desktop"))
 
-start_desktop = import_module("skinflow_desktop.launcher").start_desktop
+launcher = import_module("skinflow_desktop.launcher")
+start_desktop = launcher.start_desktop
+
+
+def run_self_check() -> None:
+    from skinflow_api.main import _web_dist_path
+
+    web_dist = _web_dist_path()
+    icon = launcher.desktop_icon_path()
+    if not (web_dist / "index.html").is_file():
+        raise RuntimeError(f"Missing bundled Web application: {web_dist}")
+    if not icon.is_file():
+        raise RuntimeError(f"Missing bundled desktop icon: {icon}")
+    print("Skinflow portable self-check passed")
 
 
 if __name__ == "__main__":
-    start_desktop()
+    if "--self-check" in sys.argv:
+        run_self_check()
+    else:
+        start_desktop()

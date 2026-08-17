@@ -4,6 +4,7 @@ import json
 import os
 import secrets
 import socket
+import sys
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -30,7 +31,10 @@ def generate_startup_token() -> str:
 
 
 def desktop_icon_path() -> Path:
-    """Return the new project icon without consulting the legacy D: drive."""
+    """Return the bundled icon when frozen and the source asset otherwise."""
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if bundle_root:
+        return Path(bundle_root) / "apps" / "desktop" / "assets" / "skinflow.ico"
     return ICON_PATH
 
 
