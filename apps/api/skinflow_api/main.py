@@ -55,7 +55,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         create_listing_router(container.listing_service, container.listing_reconciliation)
     )
     app.include_router(create_steam_session_router(container.steam_login))
-    app.include_router(create_preferences_router(container.preferences_store))
+    app.include_router(
+        create_preferences_router(container.preferences_store, container.csqaq_configuration)
+    )
     install_error_handlers(app)
     _mount_web(app, effective_settings)
     return app

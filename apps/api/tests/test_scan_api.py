@@ -12,6 +12,11 @@ class EmptyCandidates:
         return ()
 
 
+class MissingCsqaqCandidates(EmptyCandidates):
+    def validate_connection(self):
+        return "missing"
+
+
 class NoNameIds:
     def resolve(self, market_hash_name):
         return None
@@ -62,6 +67,21 @@ def test_scan_rejects_invalid_input_limits() -> None:
         )
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "INVALID_REQUEST"
+
+
+def test_scan_requires_csqaq_configuration_before_creating_job() -> None:
+    persistence = InMemoryScanUnitOfWork()
+    service = ScanService(persistence, MissingCsqaqCandidates(), NoNameIds(), NoMarket())
+    app = FastAPI()
+    app.include_router(create_scan_router(service, ImmediateRunner(service)))
+    install_error_handlers(app)
+
+    with TestClient(app) as api:
+        response = api.post("/api/scans", json={"candidate_limit": 2})
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "CSQAQ_TOKEN_REQUIRED"
+    assert not persistence.has_active_job()
 
 
 def test_scan_results_and_structured_not_found_contract() -> None:
