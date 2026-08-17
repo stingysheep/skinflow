@@ -24,7 +24,8 @@ PENDING_HTML = """
 <div class="market_listing_row market_recent_listing_row" id="mylisting_12345">
   <span class="market_listing_price">¥ 17.59</span>
   <span class="market_listing_item_name">格洛克18型</span>
-  <a href="javascript:RemoveListingDialog.Show('mylisting', '12345', {}, true)">
+  <a href="javascript:CancelMarketListingConfirmation(
+    'mylisting', '12345', 730, '2', 'asset-1')">
     取消
   </a>
 </div>

@@ -35,7 +35,8 @@ export async function cancelListingItems(item_ids: string[]) {
   for (let start = 0; start < item_ids.length; start += 100) {
     const batch = item_ids.slice(start, start + 100)
     try {
-      const result = await postJson<{ items: Array<{ id: string; status: string; message: string | null }> }>('/api/listing-requests/cancel', { item_ids: batch })
+      const timeoutMs = Math.max(30_000, batch.length * 20_000)
+      const result = await postJson<{ items: Array<{ id: string; status: string; message: string | null }> }>('/api/listing-requests/cancel', { item_ids: batch }, timeoutMs)
       items.push(...result.items)
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'CANCEL_REQUEST_FAILED'

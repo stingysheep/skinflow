@@ -642,6 +642,17 @@ class SqliteListingRepository:
             )
             self._refresh_request_status(item_id)
 
+    def mark_cancellation_pending(
+        self, item_id: str, checked_at: int, message: str
+    ) -> None:
+        with self._lock, self._connection:
+            self._connection.execute(
+                "UPDATE listing_item SET status='pending_reconciliation',message=?,"
+                "last_checked_at=?,reconcile_error=NULL WHERE id=? "
+                "AND status IN ('pending_confirmation','active')",
+                (message, checked_at, item_id),
+            )
+
     def mark_pending_confirmation(
         self, item_id: str, checked_at: int, steam_listing_id: str | None = None
     ) -> None:

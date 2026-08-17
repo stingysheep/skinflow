@@ -162,6 +162,7 @@ export function ListingsPage() {
             items={sectionItems}
             selected={selected}
             eligible={eligible}
+            hideFinancials={sectionKey === 'closed'}
             open={open}
             onToggleOpen={() => setExpandedSections((current) => toggleSet(current, sectionKey))}
             onToggleSelection={toggleSelection}
@@ -180,6 +181,7 @@ export function ListingsPage() {
                 relationshipItems={allItemsByName.get(group.name)?.items ?? group.items}
                 selected={selected}
                 eligible={groupEligible}
+                hideFinancials={sectionKey === 'closed'}
                 open={groupOpen}
                 onToggleOpen={() => setExpandedGroups((current) => toggleSet(current, groupKey))}
                 onToggleSelection={toggleSelection}
@@ -187,6 +189,7 @@ export function ListingsPage() {
               {groupOpen ? <div className="listing-assets">{group.items.map((item) => <AssetRow
                 key={item.id}
                 item={item}
+                hideFinancials={sectionKey === 'closed'}
                 selected={selected.has(item.id)}
                 onToggle={(checked) => toggleSelection([item.id], checked)}
               />)}</div> : null}
@@ -198,7 +201,7 @@ export function ListingsPage() {
   </div>
 }
 
-function SummaryRow({ level, label, detail, imageUrl, items, relationshipItems = items, selected, eligible, open, onToggleOpen, onToggleSelection }: {
+function SummaryRow({ level, label, detail, imageUrl, items, relationshipItems = items, selected, eligible, hideFinancials, open, onToggleOpen, onToggleSelection }: {
   level: 'section' | 'group'
   label: string
   detail: string
@@ -207,6 +210,7 @@ function SummaryRow({ level, label, detail, imageUrl, items, relationshipItems =
   relationshipItems?: ListingItem[]
   selected: Set<string>
   eligible: string[]
+  hideFinancials: boolean
   open: boolean
   onToggleOpen: () => void
   onToggleSelection: (ids: string[], checked: boolean) => void
@@ -220,15 +224,15 @@ function SummaryRow({ level, label, detail, imageUrl, items, relationshipItems =
       {imageUrl ? <span className="listing-history-thumb"><img src={imageUrl} alt="" loading="lazy" /></span> : null}
       <span><strong>{label}</strong><small>{detail}{eligible.length ? ` · 可取消 ${eligible.length}` : ''}</small></span>
     </span>
-    <span>{items.length}</span><span>{money(totals.cost)}</span><span>{money(totals.buyerPays)}</span><span className="listing-proceeds">{money(totals.proceeds)}</span><span>{formatRatio(totals.cost, totals.proceeds)}</span><ListingStatusProgress items={relationshipItems} />
+    <span>{items.length}</span>{hideFinancials ? <><span /><span /><span /><span /></> : <><span>{money(totals.cost)}</span><span>{money(totals.buyerPays)}</span><span className="listing-proceeds">{money(totals.proceeds)}</span><span>{formatRatio(totals.cost, totals.proceeds)}</span></>}<ListingStatusProgress items={relationshipItems} />
   </div>
 }
 
-function AssetRow({ item, selected, onToggle }: { item: ListingItem; selected: boolean; onToggle: (checked: boolean) => void }) {
+function AssetRow({ item, hideFinancials, selected, onToggle }: { item: ListingItem; hideFinancials: boolean; selected: boolean; onToggle: (checked: boolean) => void }) {
   const proceeds = item.sold_receive_total ?? item.seller_proceeds ?? null
   return <div className="listing-asset-row">
     <span className="listing-asset-name"><SelectionCheckbox label={`选择取消资产 ${item.assetid}`} selectedCount={selected ? 1 : 0} eligibleCount={canCancel(item) ? 1 : 0} onChange={onToggle} /><span><strong>资产 {item.assetid}</strong><small>{item.steam_listing_id ? `Steam listing ${item.steam_listing_id}` : item.message ?? `请求 ${item.requestId.slice(0, 8)}`} · {date(item.sold_at ?? item.last_checked_at ?? item.requestCreatedAt)}</small></span></span>
-    <span>1</span><span>{money(item.cost_each)}</span><span>{money(item.buyer_pays)}</span><span className="listing-proceeds">{money(proceeds)}</span><span>{formatRatio(item.cost_each ?? 0, proceeds)}</span><span className={`listing-status-label is-${sectionFor(item)}`}>{statusLabels[item.status] ?? item.status}</span>
+    <span>1</span>{hideFinancials ? <><span /><span /><span /><span /></> : <><span>{money(item.cost_each)}</span><span>{money(item.buyer_pays)}</span><span className="listing-proceeds">{money(proceeds)}</span><span>{formatRatio(item.cost_each ?? 0, proceeds)}</span></>}<span className={`listing-status-label is-${sectionFor(item)}`}>{statusLabels[item.status] ?? item.status}</span>
   </div>
 }
 
@@ -294,7 +298,7 @@ function sectionFor(item: Pick<ListingItem, 'status'>): SectionKey {
 }
 
 function canCancel(item: Pick<ListingItem, 'status' | 'steam_listing_id'>) {
-  return item.status === 'active' && Boolean(item.steam_listing_id)
+  return ['active', 'pending_confirmation'].includes(item.status) && Boolean(item.steam_listing_id)
 }
 
 function formatRatio(cost: number | null | undefined, proceeds: number | null | undefined) {

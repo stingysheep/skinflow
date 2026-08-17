@@ -55,6 +55,10 @@ class ListingPersistence(Protocol):
 
     def mark_cancelled(self, item_id: str, checked_at: int) -> None: ...
 
+    def mark_cancellation_pending(
+        self, item_id: str, checked_at: int, message: str
+    ) -> None: ...
+
 
 class ListingGateway(Protocol):
     def submit(self, decision: dict) -> ListingGatewayResult: ...

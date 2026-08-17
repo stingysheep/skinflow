@@ -20,7 +20,9 @@ HOVER_PATTERN = re.compile(
 )
 LISTING_ROW_PATTERN = re.compile(r"^mylisting_(?P<listing_id>\d+)$")
 AWAITING_CONFIRMATION_PATTERN = re.compile(
-    r"RemoveListingDialog\.Show\([^;]*,\s*(?:true|1)\s*\)", re.IGNORECASE
+    r"(?:CancelMarketListingConfirmation\s*\(|"
+    r"RemoveListingDialog\.Show\([^;]*,\s*(?:true|1)\s*\))",
+    re.IGNORECASE,
 )
 MARKET_DATE_PATTERN = re.compile(
     r"(?:(?P<year>\d{4})\s*年\s*)?"

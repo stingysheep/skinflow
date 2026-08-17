@@ -238,9 +238,22 @@ class ListingService:
                 continue
             try:
                 accepted = bool(cancel(listing_id))
-            except Exception as error:
+            except PermissionError:
                 results.append(
-                    {"id": item["id"], "status": "failed", "message": type(error).__name__}
+                    {"id": item["id"], "status": "failed", "message": "STEAM_SESSION_EXPIRED"}
+                )
+                continue
+            except Exception as error:
+                message = f"cancel_uncertain:{type(error).__name__}"
+                self._persistence.mark_cancellation_pending(
+                    item["id"], int(time.time() * 1000), message
+                )
+                results.append(
+                    {
+                        "id": item["id"],
+                        "status": "pending_reconciliation",
+                        "message": message,
+                    }
                 )
                 continue
             if accepted:

@@ -227,6 +227,32 @@ def test_directly_active_submit_is_the_only_result_marked_listed(tmp_path: Path)
     assert SqliteInventoryRepository(path).list_assets()[0]["status"] == "listed"
 
 
+def test_uncertain_cancellation_waits_for_reconciliation(tmp_path: Path) -> None:
+    path = tmp_path / "listing-cancel-uncertain.db"
+    repository, assetid = _seed(path)
+
+    class TimeoutGateway(Gateway):
+        def cancel(self, _listing_id: str) -> bool:
+            raise TimeoutError
+
+    service = ListingService(
+        repository,
+        repository,
+        TimeoutGateway(ListingGatewayResult(True, False, "listing-1", None)),
+    )
+    preview = service.create_preview((ListingSelection("steam", 730, "2", assetid),))
+    request = service.submit(preview["id"], "cancel-uncertain-key")
+
+    result = service.cancel_items((request["items"][0]["id"],))
+
+    current = repository.get_request(request["id"])
+    assert result["items"][0]["status"] == "pending_reconciliation"
+    assert result["items"][0]["message"] == "cancel_uncertain:TimeoutError"
+    assert current is not None
+    assert current["items"][0]["status"] == "pending_reconciliation"
+    assert SqliteInventoryRepository(path).list_assets()[0]["status"] == "listed"
+
+
 def test_reconciliation_cannot_finish_a_request_while_submit_loop_is_running(
     tmp_path: Path,
 ) -> None:

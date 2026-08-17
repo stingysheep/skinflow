@@ -18,6 +18,8 @@ describe('cancelListingItems', () => {
     expect(postJson).toHaveBeenCalledTimes(2)
     expect(vi.mocked(postJson).mock.calls[0][1]).toEqual({ item_ids: ids.slice(0, 100) })
     expect(vi.mocked(postJson).mock.calls[1][1]).toEqual({ item_ids: ids.slice(100) })
+    expect(vi.mocked(postJson).mock.calls[0][2]).toBe(2_000_000)
+    expect(vi.mocked(postJson).mock.calls[1][2]).toBe(100_000)
     expect(result.items).toHaveLength(105)
   })
 })

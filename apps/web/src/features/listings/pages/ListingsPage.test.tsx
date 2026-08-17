@@ -83,6 +83,19 @@ describe('ListingsPage', () => {
     expect(screen.getByRole('button', { name: '取消所选挂单' })).toBeDisabled()
   })
 
+  it('allows an awaiting-confirmation listing with a Steam ID to be cancelled', async () => {
+    vi.mocked(getListingRequests).mockResolvedValueOnce({ items: [{
+      ...request,
+      items: [{ ...request.items[0], status: 'pending_confirmation' }],
+    }] })
+    render(<ListingsPage />)
+
+    const statusCheckbox = await screen.findByRole('checkbox', { name: '选择等待提交/待确认下所有可取消挂单' })
+    fireEvent.click(statusCheckbox)
+
+    expect(screen.getByRole('button', { name: '取消所选挂单' })).toBeEnabled()
+  })
+
   it('renders status, item group, and asset levels in order', async () => {
     render(<ListingsPage />)
 
@@ -114,17 +127,21 @@ describe('ListingsPage', () => {
     expect(screen.getByText('在售')).toBeInTheDocument()
   })
 
-  it('keeps grouped totals numeric when legacy rows omit buyer price', async () => {
+  it('hides financial values throughout the cancelled and failed section', async () => {
     vi.mocked(getListingRequests).mockResolvedValueOnce({ items: [{
       ...request,
-      items: [{ ...request.items[0], id: 'item-closed', status: 'cancelled', steam_listing_id: null, buyer_pays: Number.NaN, seller_proceeds: Number.NaN }],
+      items: [{ ...request.items[0], id: 'item-closed', status: 'cancelled', steam_listing_id: null }],
     }] })
 
     render(<ListingsPage />)
 
     expect(await screen.findByText('已取消/失败')).toBeInTheDocument()
-    expect(screen.getAllByText('¥0.00').length).toBeGreaterThan(0)
-    expect(screen.queryByText('¥NaN')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '展开 已取消/失败' }))
+    fireEvent.click(screen.getByRole('button', { name: '展开 AK-47 | 板岩' }))
+    expect(screen.getByText('资产 asset-1')).toBeInTheDocument()
+    expect(screen.queryByText('¥1.00')).not.toBeInTheDocument()
+    expect(screen.queryByText('¥2.00')).not.toBeInTheDocument()
+    expect(screen.queryByText('¥1.70')).not.toBeInTheDocument()
   })
 
   it('shows a retryable error when the initial request fails', async () => {
