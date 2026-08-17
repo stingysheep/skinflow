@@ -8,6 +8,11 @@ param(
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 $python = Join-Path $root ".venv\Scripts\python.exe"
+$apiPath = Join-Path $root "apps\api"
+$desktopPath = Join-Path $root "apps\desktop"
+$webDist = Join-Path $root "apps\web\dist"
+$desktopAssets = Join-Path $desktopPath "assets"
+$entryPoint = Join-Path $desktopPath "launch.py"
 $distPath = Join-Path $OutputDirectory "dist"
 $workPath = Join-Path $OutputDirectory "build"
 $specPath = Join-Path $OutputDirectory "spec"
@@ -28,16 +33,16 @@ try {
     & $python -m PyInstaller `
         --onedir `
         --name Skinflow `
-        --paths apps/api `
-        --paths apps/desktop `
+        --paths $apiPath `
+        --paths $desktopPath `
         --hidden-import skinflow_desktop.launcher `
         --collect-all webview `
-        --add-data "apps/web/dist;apps/web/dist" `
-        --add-data "apps/desktop/assets;apps/desktop/assets" `
+        --add-data "$webDist;apps/web/dist" `
+        --add-data "$desktopAssets;apps/desktop/assets" `
         --distpath $distPath `
         --workpath $workPath `
         --specpath $specPath `
-        apps/desktop/launch.py
+        $entryPoint
     if ($LASTEXITCODE -ne 0) {
         throw "PyInstaller failed with exit code $LASTEXITCODE"
     }
