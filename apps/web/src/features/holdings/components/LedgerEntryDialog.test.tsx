@@ -28,7 +28,9 @@ describe('LedgerEntryDialog inventory picker', () => {
       }]}
     />)
 
-    expect(screen.getByRole('dialog')).toHaveClass('ledger-entry-dialog')
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveClass('ledger-entry-dialog')
+    expect(dialog.querySelector('form')).toHaveClass('ledger-entry-layout')
     fireEvent.click(screen.getByRole('button', { name: /法玛斯 \| ZX81/ }))
 
     expect(screen.getByRole('spinbutton', { name: '数量' })).toHaveValue(44)
