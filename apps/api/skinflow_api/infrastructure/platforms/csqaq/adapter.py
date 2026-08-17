@@ -7,6 +7,7 @@ from skinflow_api.application.scan.models import AcquisitionPlatform, ScanReques
 from skinflow_api.application.scan.ports import Candidate, CandidateSource, ScanEventSink
 from skinflow_api.application.scan.upstream_errors import (
     CsqaqAccessDenied,
+    RateLimited,
     UpstreamUnavailable,
 )
 from skinflow_api.infrastructure.http.client import HttpClient
@@ -37,6 +38,30 @@ class CsqaqAdapter(CandidateSource):
         self._chart_cache: dict[tuple[int, int, str, str], tuple[float, tuple[dict, ...]]] = {}
         self._candidate_cache_lock = RLock()
         self._chart_cache_ttl_seconds = 900.0
+
+    def configure(self, token: str) -> None:
+        """Apply a locally saved token without restarting the desktop app."""
+        with self._candidate_cache_lock:
+            self._token = token.strip()
+
+    def validate_connection(self) -> str:
+        """Classify a lightweight authenticated request without exposing credentials."""
+        if not self._token:
+            return "missing"
+        try:
+            self._limiter.run(
+                lambda: self._client.request_json(
+                    f"{SUGGEST_URL}?text=AK",
+                    headers={"ApiToken": self._token},
+                )
+            )
+        except RateLimited:
+            return "rate_limited"
+        except UpstreamUnavailable as error:
+            if error.status_code in {401, 403}:
+                return "access_denied"
+            return "unavailable"
+        return "ready"
 
     def list_candidates(
         self,

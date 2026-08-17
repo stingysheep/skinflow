@@ -13,7 +13,7 @@ from skinflow_api.domain.pricing import (
 from skinflow_api.domain.pricing.errors import BelowMinimumPrice, NegativeProceeds, UnreachablePrice
 from skinflow_api.domain.pricing.fee_calculator import calculate_net
 
-from .errors import ScanConfigurationError
+from .errors import CsqaqConfigurationError, ScanConfigurationError
 from .models import AcquisitionPlatform, ScanJob, ScanRequest, ScanStatus
 from .ports import (
     Candidate,
@@ -43,6 +43,11 @@ class ScanService:
     def create(self, request: ScanRequest) -> ScanJob:
         if self._persistence.has_active_job():
             raise ValueError("an active scan already exists")
+        validate_connection = getattr(self._candidates, "validate_connection", None)
+        if callable(validate_connection):
+            status = validate_connection()
+            if status != "ready":
+                raise CsqaqConfigurationError(status)
         job = ScanJob(request=request)
         self._persistence.create_job(job)
         return job

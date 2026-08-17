@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FeedbackState } from '../../../shared/components'
+import { useNavigate } from '@tanstack/react-router'
+import { Button, Dialog, FeedbackState } from '../../../shared/components'
 import { ApiError } from '../../../shared/api/client'
 import { usePersistentState } from '../../../shared/hooks/usePersistentState'
 import { cancelScan, createScan, getScan } from '../api/scanApi'
@@ -26,6 +27,8 @@ export function ScanPage() {
   const [resultFilter, setResultFilter] = usePersistentState<'all' | 'ready' | 'depth'>('skinflow.scan.resultFilter', initialView.resultFilter)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [configurationError, setConfigurationError] = useState<string | null>(null)
+  const navigate = useNavigate()
   const eventState = useScanEvents(jobId)
   const events = eventState.events
   useEffect(() => {
@@ -62,7 +65,7 @@ export function ScanPage() {
     event.type === 'candidate.rejected' && event.payload.reason_code === 'UPSTREAM_UNAVAILABLE'
   )).length : 0
   const start = async () => {
-    setStarting(true); setError(null); setSelectedName(null)
+    setStarting(true); setError(null); setConfigurationError(null); setSelectedName(null)
     try {
       const job = await createScan(criteria)
       if (!job.job_id) throw new Error('扫描任务创建失败：服务未返回任务编号。')
@@ -70,6 +73,10 @@ export function ScanPage() {
       window.sessionStorage.setItem('skinflow.scan.jobId', job.job_id)
       setStatus(job.status as ScanStatus)
     } catch (reason) {
+      if (reason instanceof ApiError && isCsqaqConfigurationError(reason.code)) {
+        setConfigurationError(reason.code)
+        return
+      }
       setError(errorMessage(reason))
     } finally {
       setStarting(false)
@@ -86,6 +93,9 @@ export function ScanPage() {
     }
   }
   return <div className="market-studio">
+    <Dialog open={configurationError !== null} onOpenChange={(open) => { if (!open) setConfigurationError(null) }} title="CSQAQ 配置需要处理" description={csqaqConfigurationMessage(configurationError)}>
+      <div className="scan-configuration-dialog-actions"><Button variant="secondary" onClick={() => setConfigurationError(null)}>留在扫描页</Button><Button onClick={() => { setConfigurationError(null); void navigate({ to: '/settings' }) }}>去配置</Button></div>
+    </Dialog>
     <ScanToolbar limit={criteria.candidateLimit} onLimit={(candidateLimit) => setCriteria({ ...criteria, candidateLimit })} mode={criteria.mode} platforms={criteria.platforms} status={status} query={query} onQuery={setQuery} sort={sort} onSort={setSort} filter={resultFilter} onFilter={setResultFilter} starting={starting} onStart={() => void start()} onCancel={() => void cancel()} />
     <ScanCriteriaBar criteria={criteria} disabled={status === 'queued' || status === 'running' || status === 'cancelling'} onChange={setCriteria} />
     <ScanSummary status={status} resultCount={results.length} candidateLimit={criteria.candidateLimit} discoveredCount={discoveredCount} connection={eventState.connection} connectionError={eventState.lastError} rejectedCount={events.filter((event) => event.type === 'candidate.rejected').length} backoffCount={events.filter((event) => event.type === 'upstream.backoff_started').length} sourceUnavailableCount={youpinUnavailableCount} platforms={criteria.platforms} />
@@ -101,6 +111,16 @@ export function ScanPage() {
 function errorMessage(reason: unknown) {
   if (reason instanceof ApiError && reason.code === 'CONFLICT') return '已有扫描任务正在运行，请等待完成或先取消当前任务。'
   return reason instanceof Error ? reason.message : '无法启动扫描任务'
+}
+
+function isCsqaqConfigurationError(code: string | null) {
+  return code === 'CSQAQ_TOKEN_REQUIRED' || code === 'CSQAQ_ACCESS_DENIED' || code === 'CSQAQ_UNAVAILABLE'
+}
+
+function csqaqConfigurationMessage(code: string | null) {
+  if (code === 'CSQAQ_TOKEN_REQUIRED') return '请先填写 CSQAQ API 令牌，并在 CSQAQ 中为当前公网 IP 配置白名单。'
+  if (code === 'CSQAQ_ACCESS_DENIED') return 'CSQAQ 拒绝了当前令牌或网络 IP。请在设置中检查令牌，并更新 CSQAQ 白名单。'
+  return '暂时无法验证 CSQAQ 连接。请检查网络或稍后在设置中重新验证。'
 }
 
 function loadCriteria(): ScanCriteria {

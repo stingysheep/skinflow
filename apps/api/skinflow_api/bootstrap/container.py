@@ -6,7 +6,7 @@ from skinflow_api.application.inventory import InventoryService
 from skinflow_api.application.ledger import LedgerService
 from skinflow_api.application.listing import ListingService
 from skinflow_api.application.listing.reconciliation import ListingReconciliationService
-from skinflow_api.application.preferences import PreferencesStore
+from skinflow_api.application.preferences import CsqaqConfigurationService, PreferencesStore
 from skinflow_api.application.scan.service import ScanService
 from skinflow_api.infrastructure.database.inventory import SqliteInventoryRepository
 from skinflow_api.infrastructure.database.ledger import LedgerRepository
@@ -30,7 +30,7 @@ from skinflow_api.infrastructure.platforms.steam.session import (
     PersistentSteamSession,
 )
 from skinflow_api.infrastructure.platforms.youpin import EdgeYoupinBrowser, YoupinAdapter
-from skinflow_api.infrastructure.preferences import JsonPreferencesStore
+from skinflow_api.infrastructure.preferences import DpapiCsqaqTokenStore, JsonPreferencesStore
 from skinflow_api.settings import Settings
 
 from .listing_reconciliation_runner import ListingReconciliationRunner
@@ -49,6 +49,7 @@ class Container:
     steam_login: SteamLoginCoordinator
     youpin_browser: EdgeYoupinBrowser
     preferences_store: PreferencesStore
+    csqaq_configuration: CsqaqConfigurationService
 
     def close(self) -> None:
         self.listing_service.close()
@@ -64,6 +65,7 @@ def build_container(settings: Settings) -> Container:
     steam = SteamAdapter()
     youpin_browser = EdgeYoupinBrowser()
     preferences_store = JsonPreferencesStore(settings.database_path)
+    csqaq_token_store = DpapiCsqaqTokenStore(settings.database_path)
     youpin = YoupinAdapter(youpin_browser)
     steam_session = (
         InMemorySteamSession()
@@ -75,7 +77,13 @@ def build_container(settings: Settings) -> Container:
     listing_repository = SqliteListingRepository(settings.database_path)
     ledger_repository = LedgerRepository(settings.database_path)
     resolver = JsonNameIdResolver(settings.nameid_path)
-    csqaq = CsqaqAdapter(settings.csqaq_api_token)
+    csqaq = CsqaqAdapter(csqaq_token_store.load() or settings.csqaq_api_token)
+    csqaq_configuration = CsqaqConfigurationService(
+        preferences_store,
+        csqaq_token_store,
+        csqaq,
+        settings.csqaq_api_token,
+    )
     scan_service = ScanService(
         persistence,
         csqaq,
@@ -113,4 +121,5 @@ def build_container(settings: Settings) -> Container:
         steam_login=SteamLoginCoordinator(steam_session),
         youpin_browser=youpin_browser,
         preferences_store=preferences_store,
+        csqaq_configuration=csqaq_configuration,
     )

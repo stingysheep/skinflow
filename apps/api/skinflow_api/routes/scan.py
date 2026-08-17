@@ -8,6 +8,7 @@ from fastapi import APIRouter, Header, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
+from skinflow_api.application.scan.errors import ScanConfigurationError
 from skinflow_api.application.scan.models import AcquisitionPlatform, ScanMode, ScanRequest
 from skinflow_api.application.scan.service import ScanService
 
@@ -63,13 +64,24 @@ def create_scan_router(service: ScanService, runner: ScanRunner) -> APIRouter:
                     manual_names=tuple(body.manual_names),
                     operation_mode=ScanMode(body.operation_mode),
                     acquisition_platforms=tuple(
-                        AcquisitionPlatform(platform)
-                        for platform in body.acquisition_platforms
+                        AcquisitionPlatform(platform) for platform in body.acquisition_platforms
                     ),
                     min_price=body.min_price,
                     max_price=body.max_price,
                     min_daily_volume=body.min_daily_volume,
                 )
+            )
+        except ScanConfigurationError as error:
+            messages = {
+                "CSQAQ_TOKEN_REQUIRED": "请先在系统设置中填写 CSQAQ API 令牌。",
+                "CSQAQ_ACCESS_DENIED": "CSQAQ 拒绝了当前令牌或网络 IP 白名单。",
+                "CSQAQ_UNAVAILABLE": "暂时无法验证 CSQAQ 连接，请稍后重试。",
+            }
+            return error_response(
+                422,
+                error.code,
+                messages[error.code],
+                retryable=error.code == "CSQAQ_UNAVAILABLE",
             )
         except ValueError as error:
             return error_response(

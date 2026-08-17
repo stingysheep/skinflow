@@ -1,14 +1,17 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 
 import { refreshInventory } from '../../inventory'
-import { getSteamSession, startSteamLogin } from '../api/settingsApi'
+import { getCsqaqConfiguration, getSteamSession, startSteamLogin } from '../api/settingsApi'
 import { SettingsPage } from './SettingsPage'
 
 vi.mock('../../inventory', () => ({ refreshInventory: vi.fn() }))
 vi.mock('../api/settingsApi', () => ({
   clearSteamSession: vi.fn(),
+  getCsqaqConfiguration: vi.fn(),
   getSteamSession: vi.fn(),
+  saveCsqaqConfiguration: vi.fn(),
   startSteamLogin: vi.fn(),
+  validateCsqaqConfiguration: vi.fn(),
 }))
 
 const absent = { status: 'absent' as const, steamid64: null, login_running: false, error: null }
@@ -25,6 +28,7 @@ describe('SettingsPage', () => {
     vi.useFakeTimers()
     vi.mocked(getSteamSession).mockResolvedValueOnce(absent).mockResolvedValueOnce(active)
     vi.mocked(startSteamLogin).mockResolvedValue(running)
+    vi.mocked(getCsqaqConfiguration).mockResolvedValue({ token_configured: true, whitelist_ip: '203.0.113.1', status: 'ready' })
     vi.mocked(refreshInventory).mockResolvedValue({ asset_count: 12, observed_at: 1 })
   })
 

@@ -38,6 +38,22 @@ def test_csqaq_adapter_exposes_access_denied_as_stable_error() -> None:
     assert error.value.code == "CSQAQ_ACCESS_DENIED"
 
 
+def test_csqaq_connection_validation_classifies_configuration_state() -> None:
+    class UnauthorizedClient:
+        def request_json(self, *_args, **_kwargs):
+            raise UpstreamUnavailable("upstream status 403", status_code=403)
+
+    adapter = CsqaqAdapter(
+        "token",
+        UnauthorizedClient(),
+        PlatformRateLimiter("test", concurrency=1, min_interval_seconds=0),
+    )
+
+    assert adapter.validate_connection() == "access_denied"
+    adapter.configure("")
+    assert adapter.validate_connection() == "missing"
+
+
 def test_csqaq_candidate_source_reads_a_second_page_for_scan_backfill() -> None:
     class PagedClient:
         def __init__(self) -> None:
