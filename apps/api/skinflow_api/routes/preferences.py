@@ -36,7 +36,7 @@ def create_preferences_router(
 
     @router.get("/csqaq")
     def get_csqaq_configuration() -> dict[str, Any]:
-        return _csqaq_response(csqaq)
+        return _csqaq_response(csqaq.status())
 
     @router.put("/csqaq")
     def save_csqaq_configuration(payload: CsqaqConfigurationValue) -> dict[str, Any]:
@@ -44,7 +44,7 @@ def create_preferences_router(
 
     @router.post("/csqaq/validate")
     def validate_csqaq_configuration() -> dict[str, Any]:
-        return _csqaq_response(csqaq)
+        return _csqaq_response(csqaq.status())
 
     @router.get("/{key}")
     def get_preference(key: str) -> dict[str, Any]:

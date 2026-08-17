@@ -66,6 +66,8 @@ def test_csqaq_token_is_not_exposed_through_generic_preferences(tmp_path: Path) 
             "/api/preferences/csqaq",
             json={"token": "secret-token", "whitelist_ip": "203.0.113.9"},
         )
+        loaded = client.get("/api/preferences/csqaq")
+        validated = client.post("/api/preferences/csqaq/validate")
         all_preferences = client.get("/api/preferences")
 
     assert saved.json() == {
@@ -74,4 +76,6 @@ def test_csqaq_token_is_not_exposed_through_generic_preferences(tmp_path: Path) 
         "status": "ready",
     }
     assert tokens.load() == "secret-token"
+    assert loaded.json() == saved.json()
+    assert validated.json() == saved.json()
     assert "secret-token" not in str(all_preferences.json())
