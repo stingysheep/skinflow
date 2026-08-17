@@ -7,3 +7,4 @@ def test_source_tree_entrypoint_exists_and_bootstraps_paths() -> None:
     assert "ROOT / \"api\"" in source
     assert "ROOT / \"desktop\"" in source
     assert "run_self_check" in source
+    assert "from skinflow_api.main import" not in source

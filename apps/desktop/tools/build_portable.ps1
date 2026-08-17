@@ -8,6 +8,7 @@ param(
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 $python = Join-Path $root ".venv\Scripts\python.exe"
+$venvConfig = Join-Path $root ".venv\pyvenv.cfg"
 $apiPath = Join-Path $root "apps\api"
 $desktopPath = Join-Path $root "apps\desktop"
 $webDist = Join-Path $root "apps\web\dist"
@@ -27,6 +28,21 @@ if ((Test-Path -LiteralPath $portablePath) -or (Test-Path -LiteralPath $archiveP
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
+
+# A virtual environment created from Conda records its runtime outside .venv.
+# Make those DLLs discoverable while PyInstaller resolves and bundles them.
+if (Test-Path -LiteralPath $venvConfig) {
+    $homeLine = Select-String -LiteralPath $venvConfig -Pattern '^home\s*=\s*(.+)$' | Select-Object -First 1
+    if ($homeLine) {
+        $pythonHome = $homeLine.Matches[0].Groups[1].Value.Trim()
+        foreach ($runtimePath in @($pythonHome, (Join-Path $pythonHome "DLLs"), (Join-Path $pythonHome "Library\bin"))) {
+            if (Test-Path -LiteralPath $runtimePath) {
+                $env:PATH = "$runtimePath$([IO.Path]::PathSeparator)$env:PATH"
+            }
+        }
+    }
+}
+
 Push-Location $root
 try {
     npm run build

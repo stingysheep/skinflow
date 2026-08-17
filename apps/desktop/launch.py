@@ -14,15 +14,15 @@ else:
     sys.path.insert(0, str(ROOT / "api"))
     sys.path.insert(0, str(ROOT / "desktop"))
 
-launcher = import_module("skinflow_desktop.launcher")
-start_desktop = launcher.start_desktop
-
-
 def run_self_check() -> None:
-    from skinflow_api.main import _web_dist_path
-
-    web_dist = _web_dist_path()
-    icon = launcher.desktop_icon_path()
+    if getattr(sys, "frozen", False):
+        bundle_root = Path(sys._MEIPASS)
+        web_dist = bundle_root / "apps" / "web" / "dist"
+        icon = bundle_root / "apps" / "desktop" / "assets" / "skinflow.ico"
+    else:
+        root = Path(__file__).resolve().parents[2]
+        web_dist = root / "apps" / "web" / "dist"
+        icon = root / "apps" / "desktop" / "assets" / "skinflow.ico"
     if not (web_dist / "index.html").is_file():
         raise RuntimeError(f"Missing bundled Web application: {web_dist}")
     if not icon.is_file():
@@ -34,4 +34,6 @@ if __name__ == "__main__":
     if "--self-check" in sys.argv:
         run_self_check()
     else:
+        launcher = import_module("skinflow_desktop.launcher")
+        start_desktop = launcher.start_desktop
         start_desktop()
