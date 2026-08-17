@@ -183,8 +183,8 @@ function feeBreakdownFromBuyerPays(buyerPays: number): { buyerPays: number; stea
   let lower: ReturnType<typeof feeBreakdownFromBuyerPays> = null
   while (low <= high) {
     const receive = Math.floor((low + high) / 2)
-    const steam = Math.max(5, Math.floor(receive * 0.05))
-    const publisher = Math.max(5, Math.floor(receive * 0.10))
+    const steam = Math.max(7, Math.floor(receive * 0.05))
+    const publisher = Math.max(7, Math.floor(receive * 0.10))
     const total = receive + steam + publisher
     if (total === buyerPays) return { buyerPays: total, steamFee: steam, publisherFee: publisher, sellerProceeds: receive }
     if (total < buyerPays) {

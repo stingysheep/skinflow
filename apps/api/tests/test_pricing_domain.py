@@ -23,10 +23,10 @@ def test_money_is_integer_cny() -> None:
 def test_steam_fee_rounds_each_fee_down_and_is_reversible() -> None:
     policy = steam_cny_policy()
     breakdown = receive_to_pays(100, policy)
-    assert breakdown.steam_fee == 5
+    assert breakdown.steam_fee == 7
     assert breakdown.publisher_fee == 10
-    assert breakdown.buyer_pays == 115
-    assert calculate_net(115, policy).seller_proceeds == 100
+    assert breakdown.buyer_pays == 117
+    assert calculate_net(117, policy).seller_proceeds == 100
 
 
 def test_low_price_buyer_total_maps_to_steam_seller_price() -> None:
@@ -35,17 +35,26 @@ def test_low_price_buyer_total_maps_to_steam_seller_price() -> None:
     breakdown = calculate_net(34, policy)
 
     assert breakdown.buyer_pays == 34
-    assert breakdown.steam_fee == 5
-    assert breakdown.publisher_fee == 5
-    assert breakdown.seller_proceeds == 24
+    assert breakdown.steam_fee == 7
+    assert breakdown.publisher_fee == 7
+    assert breakdown.seller_proceeds == 20
 
 
 def test_low_price_seller_amount_uses_cny_minimum_fee() -> None:
     breakdown = receive_to_pays(34, steam_cny_policy())
 
-    assert breakdown.buyer_pays == 44
-    assert breakdown.steam_fee == 5
-    assert breakdown.publisher_fee == 5
+    assert breakdown.buyer_pays == 48
+    assert breakdown.steam_fee == 7
+    assert breakdown.publisher_fee == 7
+
+
+def test_cny_buyer_total_141_maps_to_steam_seller_price_122() -> None:
+    breakdown = calculate_net(141, steam_cny_policy())
+
+    assert breakdown.seller_proceeds == 122
+    assert breakdown.steam_fee == 7
+    assert breakdown.publisher_fee == 12
+    assert receive_to_pays(breakdown.seller_proceeds, steam_cny_policy()).buyer_pays == 141
 
 
 def test_non_cny_policy_is_rejected() -> None:
@@ -81,7 +90,7 @@ def test_recommendation_calculates_queue_and_eta() -> None:
     assert estimate.recommended_price <= 223
     assert estimate.queue_ahead == 7
     assert estimate.eta_estimate == 0.9
-    assert estimate.fee_policy_version == "steam-cs2-cny-v2-min5"
+    assert estimate.fee_policy_version == "steam-cs2-cny-v3-min7"
 
 
 def test_recommendation_below_minimum_does_not_silent_adjust() -> None:

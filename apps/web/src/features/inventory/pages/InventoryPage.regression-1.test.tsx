@@ -80,9 +80,10 @@ describe('InventoryPage listing preview regression', () => {
     const dialog = await screen.findByRole('dialog')
     expect(dialog).toHaveTextContent('确认 Steam 挂单')
     const price = within(dialog).getByRole('textbox', { name: 'AK-47 | 板岩 买家支付价（实际提交）' })
-    fireEvent.change(price, { target: { value: '20' } })
+    fireEvent.change(price, { target: { value: '1.41' } })
     fireEvent.blur(price)
-    expect(price).toHaveValue('19.98')
+    expect(price).toHaveValue('1.41')
+    expect(dialog).toHaveTextContent('¥1.22')
   })
 
   it('keeps the preview open while the serial Steam submission is running', async () => {

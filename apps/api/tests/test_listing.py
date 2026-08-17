@@ -318,7 +318,21 @@ def test_buyer_paid_price_is_converted_to_steam_seller_price_before_submit(
     service.submit(preview["id"], "price-contract-key")
 
     assert gateway.decisions[0]["buyer_pays"] == 31
-    assert gateway.decisions[0]["seller_proceeds"] == 21
+    assert gateway.decisions[0]["seller_proceeds"] == 17
+
+
+def test_buyer_paid_141_submits_the_exact_steam_seller_price(tmp_path: Path) -> None:
+    repository, assetid = _seed(tmp_path / "listing-price-141.db")
+    gateway = Gateway(ListingGatewayResult(True, True, "123", None))
+    service = ListingService(repository, repository, gateway)
+    preview = service.create_preview(
+        (ListingSelection("steam", 730, "2", assetid, buyer_pays=141),)
+    )
+
+    service.submit(preview["id"], "price-141-key")
+
+    assert gateway.decisions[0]["buyer_pays"] == 141
+    assert gateway.decisions[0]["seller_proceeds"] == 122
 
 
 def test_listing_preview_refreshes_live_book_and_uses_highest_bid(tmp_path: Path) -> None:

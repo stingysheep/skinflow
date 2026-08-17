@@ -30,12 +30,12 @@ def steam_cny_policy(appid: int = 730, currency: str = CNY) -> FeePolicy:
     return FeePolicy(
         appid=appid,
         currency=currency,
-        version="steam-cs2-cny-v2-min5",
+        version="steam-cs2-cny-v3-min7",
         steam_rate_ppm=50_000,
         publisher_rate_ppm=100_000,
-        # Steam's CNY wallet currently exposes a 5-fen minimum market price
+        # Steam's CNY wallet currently exposes a 7-fen minimum market price
         # for each fee component. This is wallet metadata, not a new rate.
-        min_steam_fee=5,
-        min_publisher_fee=5,
+        min_steam_fee=7,
+        min_publisher_fee=7,
         market_price_increment=1,
     )
