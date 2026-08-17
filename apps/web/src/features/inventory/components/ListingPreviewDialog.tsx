@@ -63,10 +63,6 @@ export function ListingPreviewDialog({ preview, open, onOpenChange, onSubmitted 
     setSubmitError(null)
     try {
       const request = await submitListing(preview.id, parsed)
-      if (request.items.some((item) => item.status === 'failed')) {
-        setSubmitError('Steam 拒绝了部分挂单，请查看挂单记录中的失败原因。')
-        return
-      }
       trackListingRequest(request.id)
       onSubmitted()
       onOpenChange(false)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from contextlib import suppress
 from dataclasses import replace
-from threading import Thread
+from threading import Lock, Thread, current_thread
 
 from skinflow_api.domain.listing import ListingDecision
 from skinflow_api.domain.listing.errors import InvalidListing
@@ -36,6 +36,8 @@ class ListingService:
         self._persistence = persistence
         self._gateway = gateway
         self._market_snapshot_provider = market_snapshot_provider
+        self._worker_lock = Lock()
+        self._workers: set[Thread] = set()
         recover = getattr(self._persistence, "recover_interrupted_requests", None)
         if recover is not None:
             recover()
@@ -134,6 +136,39 @@ class ListingService:
     def submit(
         self, preview_id: str, idempotency_key: str, prices: dict[str, int] | None = None
     ) -> dict:
+        request, preview = self._prepare_request(preview_id, idempotency_key, prices)
+        if request.get("replayed"):
+            return request
+        return self._run_submission(request, preview, raise_permission_error=True)
+
+    def submit_background(
+        self, preview_id: str, idempotency_key: str, prices: dict[str, int] | None = None
+    ) -> dict:
+        """Persist the request before executing slow Steam calls in a daemon worker."""
+        request, preview = self._prepare_request(preview_id, idempotency_key, prices)
+        if request.get("replayed"):
+            return request
+        worker = Thread(
+            target=self._run_background_submission,
+            args=(request, preview),
+            daemon=True,
+            name="skinflow-listing-submit",
+        )
+        with self._worker_lock:
+            self._workers.add(worker)
+        worker.start()
+        return request
+
+    def close(self) -> None:
+        """Give short-lived workers a chance to finish when the app shuts down."""
+        with self._worker_lock:
+            workers = tuple(self._workers)
+        for worker in workers:
+            worker.join(timeout=1)
+
+    def _prepare_request(
+        self, preview_id: str, idempotency_key: str, prices: dict[str, int] | None
+    ) -> tuple[dict, dict]:
         if not idempotency_key or len(idempotency_key) > 100:
             raise InvalidListing("idempotency key is required")
         preview = self._persistence.get_preview(preview_id)
@@ -145,8 +180,18 @@ class ListingService:
             self.update_preview_prices(preview_id, prices)
             preview = self._persistence.get_preview(preview_id) or preview
         request = self._persistence.create_request(preview_id, idempotency_key)
-        if request.get("replayed"):
-            return request
+        return request, preview
+
+    def _run_background_submission(self, request: dict, preview: dict) -> None:
+        try:
+            self._run_submission(request, preview, raise_permission_error=False)
+        finally:
+            with self._worker_lock:
+                self._workers.discard(current_thread())
+
+    def _run_submission(
+        self, request: dict, preview: dict, *, raise_permission_error: bool
+    ) -> dict:
         for item in preview["items"]:
             self._persistence.begin_submission(request["id"], item)
             try:
@@ -158,8 +203,10 @@ class ListingService:
                     ListingGatewayResult(False, False, None, "steam_session_expired"),
                 )
                 self._persistence.abort_request(request["id"], "submission_aborted")
-                self._persistence.complete_request(request["id"])
-                raise
+                completed = self._persistence.complete_request(request["id"])
+                if raise_permission_error:
+                    raise
+                return completed
             except Exception as error:
                 result = self._uncertain_result(type(error).__name__)
             self._persistence.record_result(request["id"], item, result)

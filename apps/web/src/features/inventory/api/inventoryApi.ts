@@ -35,5 +35,5 @@ export const submitListing = (previewId: string, prices: Record<string, number> 
   postJson<ListingRequest>(
     '/api/listing-requests',
     { preview_id: previewId, idempotency_key: crypto.randomUUID(), confirmed: true, prices },
-    1_200_000,
+    30_000,
   )

@@ -12,9 +12,9 @@ import { getHoldings, type Holding } from "../api/ledgerApi";
 import { LedgerEntryDialog } from "../components/LedgerEntryDialog";
 import { PendingPurchases } from "../components/PendingPurchases";
 import { HoldingMaintenanceDialog } from "../components/HoldingMaintenanceDialog";
-import { getInventoryGroupDetails } from "../../inventory/api/inventoryApi";
+import { getInventory, getInventoryGroupDetails } from "../../inventory/api/inventoryApi";
 import { InventoryGroupDetails } from "../../inventory/components/InventoryGroupDetails";
-import type { InventoryGroupDetails as InventoryGroupDetailsModel } from "../../inventory/model/types";
+import type { InventoryAsset, InventoryGroup, InventoryGroupDetails as InventoryGroupDetailsModel } from "../../inventory/model/types";
 import "../holdings.css";
 import "../../inventory/inventory.css";
 
@@ -22,6 +22,7 @@ const money = (value: number) => `¥${(value / 100).toFixed(2)}`;
 
 export function HoldingsPage() {
   const [items, setItems] = useState<Holding[]>([]);
+  const [inventoryGroups, setInventoryGroups] = useState<InventoryGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialog, setDialog] = useState<"purchase" | "sale" | null>(null);
   const [expandedName, setExpandedName] = useState<string | null>(null);
@@ -39,7 +40,9 @@ export function HoldingsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      setItems((await getHoldings()).items);
+      const [holdingsResult, inventoryResult] = await Promise.allSettled([getHoldings(), getInventory()]);
+      if (holdingsResult.status === "fulfilled") setItems(holdingsResult.value.items);
+      if (inventoryResult.status === "fulfilled") setInventoryGroups(inventoryResult.value.groups ?? groupInventoryAssets(inventoryResult.value.items));
     } finally {
       setLoading(false);
     }
@@ -229,6 +232,7 @@ export function HoldingsPage() {
         onSaved={load}
         finalFocusRef={finalFocusRef}
         holdings={items}
+        inventoryGroups={inventoryGroups}
       />
       <HoldingMaintenanceDialog mode={maintenance?.mode ?? 'edit'} holding={maintenance?.holding ?? null} open={maintenance !== null} onOpenChange={(open) => { if (!open) setMaintenance(null) }} onSaved={load} />
     </div>
@@ -237,4 +241,29 @@ export function HoldingsPage() {
 
 function steamMarketUrl(marketHashName: string) {
   return `https://steamcommunity.com/market/listings/730/${encodeURIComponent(marketHashName)}`;
+}
+
+function groupInventoryAssets(assets: InventoryAsset[]): InventoryGroup[] {
+  const groups = new Map<string, InventoryGroup>();
+  for (const asset of assets) {
+    const current = groups.get(asset.market_hash_name);
+    if (current) {
+      current.total_quantity += 1;
+      if (asset.status === "available" && asset.tradable) current.available_quantity += 1;
+      if (asset.status === "listed") current.listed_quantity += 1;
+      continue;
+    }
+    groups.set(asset.market_hash_name, {
+      market_hash_name: asset.market_hash_name,
+      display_name: asset.display_name,
+      image_url: asset.image_url,
+      wear_text: asset.wear_text,
+      total_quantity: 1,
+      available_quantity: asset.status === "available" && asset.tradable ? 1 : 0,
+      listed_quantity: asset.status === "listed" ? 1 : 0,
+      marketable_quantity: asset.marketable ? 1 : 0,
+      tradable_quantity: asset.tradable ? 1 : 0,
+    });
+  }
+  return [...groups.values()];
 }

@@ -1,6 +1,7 @@
 import { type FormEvent, type RefObject, useEffect, useState } from 'react'
 import { Button, Dialog } from '../../../shared/components'
 import { createPurchase, createSale, searchLedgerCatalog, type Holding } from '../api/ledgerApi'
+import type { InventoryGroup } from '../../inventory/model/types'
 
 type Props = {
   mode: 'purchase' | 'sale'
@@ -9,6 +10,7 @@ type Props = {
   onSaved: () => void
   finalFocusRef: RefObject<HTMLElement | null>
   holdings?: Holding[]
+  inventoryGroups?: InventoryGroup[]
 }
 
 type CatalogItem = {
@@ -18,7 +20,7 @@ type CatalogItem = {
   open_quantity: number
 }
 
-export function LedgerEntryDialog({ mode, open, onOpenChange, onSaved, finalFocusRef, holdings = [] }: Props) {
+export function LedgerEntryDialog({ mode, open, onOpenChange, onSaved, finalFocusRef, holdings = [], inventoryGroups = [] }: Props) {
   const [name, setName] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [quantity, setQuantity] = useState('1')
@@ -35,6 +37,8 @@ export function LedgerEntryDialog({ mode, open, onOpenChange, onSaved, finalFocu
     setDisplayName('')
     setQuantity('1')
     setAmount('')
+    setVenue('BUFF')
+    setPending(false)
     setError(null)
     setSuggestions([])
   }, [mode, open])
@@ -56,10 +60,11 @@ export function LedgerEntryDialog({ mode, open, onOpenChange, onSaved, finalFocu
     }
   }, [displayName, name, open])
 
-  function choose(item: CatalogItem | Holding) {
+  function choose(item: CatalogItem | Holding | InventoryGroup) {
     setName(item.market_hash_name)
     setDisplayName(item.display_name)
-    if (mode === 'sale') setQuantity(String(Math.min(Number(quantity) || 1, item.open_quantity || 1)))
+    if (mode === 'sale' && 'open_quantity' in item) setQuantity(String(Math.min(Number(quantity) || 1, item.open_quantity || 1)))
+    if (mode === 'purchase' && 'total_quantity' in item) setQuantity(String(Math.max(item.total_quantity, 1)))
     setSuggestions([])
   }
 
@@ -84,8 +89,12 @@ export function LedgerEntryDialog({ mode, open, onOpenChange, onSaved, finalFocu
   }
 
   const inputValue = displayName || name
-  return <Dialog open={open} onOpenChange={onOpenChange} finalFocusRef={finalFocusRef} title={mode === 'purchase' ? '记录买入' : '记录真实卖出'} description={mode === 'purchase' ? '选择或搜索中文物品名称，再保存买入批次。' : '先从当前持仓中选择要记账的物品，再输入实际到账总额。'}>
+  return <Dialog open={open} onOpenChange={onOpenChange} finalFocusRef={finalFocusRef} contentClassName="ledger-entry-dialog" title={mode === 'purchase' ? '记录买入' : '记录真实卖出'} description={mode === 'purchase' ? '从当前库存选择物品，或搜索名称后保存买入批次。' : '先从当前持仓中选择要记账的物品，再输入实际到账总额。'}>
     <form className="ledger-form" onSubmit={submit}>
+      {mode === 'purchase' ? <section className="ledger-holdings-picker" aria-label="当前库存">
+        <div className="ledger-picker-heading"><strong>当前库存</strong><small>选择后自动填入物品和数量</small></div>
+        {inventoryGroups.length ? <div className="ledger-holding-list">{inventoryGroups.map((item) => <button type="button" key={item.market_hash_name} className={name === item.market_hash_name ? 'is-selected' : ''} onClick={() => choose(item)}>{item.image_url ? <img src={item.image_url} alt="" /> : <span className="ledger-thumb-placeholder" />}<span><strong>{item.display_name}{item.wear_text ? ` · ${item.wear_text}` : ''}</strong><small>{item.total_quantity} 件 · {item.available_quantity} 可交易</small></span></button>)}</div> : <div className="ledger-picker-empty">暂无已同步库存，请先同步库存。</div>}
+      </section> : null}
       {mode === 'sale' ? <section className="ledger-holdings-picker" aria-label="当前持仓">
         <div className="ledger-picker-heading"><strong>当前持仓</strong><small>选择后自动填入物品和数量</small></div>
         {holdings.length ? <div className="ledger-holding-list">{holdings.map((item) => <button type="button" key={item.market_hash_name} className={name === item.market_hash_name ? 'is-selected' : ''} onClick={() => choose(item)}>{item.image_url ? <img src={item.image_url} alt="" /> : <span className="ledger-thumb-placeholder" />}<span><strong>{item.display_name}{item.wear_text ? ` · ${item.wear_text}` : ''}</strong><small>{item.open_quantity} 件 · 均价 ¥{(item.open_cost / Math.max(item.open_quantity, 1) / 100).toFixed(2)}</small></span></button>)}</div> : <div className="ledger-picker-empty">暂无未售持仓，请先记录买入。</div>}

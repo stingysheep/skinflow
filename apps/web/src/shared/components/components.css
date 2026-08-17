@@ -53,7 +53,7 @@
 .feedback-state-error { color: var(--color-danger); }
 .feedback-state-error p { color: var(--color-text-muted); }
 
-.global-notification-stack { position: fixed; top: var(--space-4); right: var(--space-4); z-index: calc(var(--z-modal) + 1); display: grid; width: min(360px, calc(100vw - 32px)); gap: var(--space-2); pointer-events: none; }
+.global-notification-stack { position: fixed; right: var(--space-4); bottom: var(--space-4); z-index: calc(var(--z-modal) + 1); display: grid; width: min(420px, calc(100vw - 32px)); gap: var(--space-2); pointer-events: none; }
 .global-notification { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-2); align-items: start; padding: var(--space-3); border: var(--border-width) solid; border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-dialog); pointer-events: auto; animation: notification-in 180ms ease-out; }
 .global-notification > span { display: grid; gap: 2px; min-width: 0; }
 .global-notification strong { font-size: var(--font-size-sm); }
@@ -62,8 +62,16 @@
 .global-notification button:hover { background: var(--color-surface-subtle); }
 .global-notification.is-success { border-color: var(--color-positive); color: var(--color-positive); }
 .global-notification.is-danger { border-color: var(--color-danger); color: var(--color-danger); }
+.global-notification-task { grid-template-columns: auto minmax(0, 1fr); border-color: var(--color-interactive); color: var(--color-interactive); }
+.global-notification-task strong { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.global-notification-task strong em { color: var(--color-text); font: 600 var(--font-size-xs) var(--font-mono); font-style: normal; }
+.global-notification-task small { display: block; margin-top: 3px; }
+.global-notification-spinner { animation: notification-spin 900ms linear infinite; }
+.global-task-progress { display: block; height: 7px; margin-top: var(--space-2); overflow: hidden; border-radius: 999px; background: var(--color-border); }
+.global-task-progress i { display: block; height: 100%; border-radius: inherit; background: var(--color-interactive); transition: width var(--transition-fast); }
+@keyframes notification-spin { to { transform: rotate(360deg); } }
 @keyframes notification-in { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
-@media (prefers-reduced-motion: reduce) { .global-notification { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .global-notification, .global-notification-spinner { animation: none; } .global-task-progress i { transition: none; } }
 
 .data-table-frame { min-width: 0; border: var(--border-width) solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
 .data-table-scroll { overflow-x: auto; }
@@ -72,6 +80,8 @@
 .dialog-content { position: fixed; top: 50%; left: 50%; z-index: var(--z-modal); width: min(520px, calc(100vw - 48px)); transform: translate(-50%, -50%); padding: var(--space-6); border: var(--border-width) solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-dialog); }
 .listing-preview-dialog { width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: hidden; }
 .listing-preview-dialog .dialog-body { max-height: calc(100vh - 190px); overflow: auto; }
+.ledger-entry-dialog { width: min(860px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: hidden; }
+.ledger-entry-dialog .dialog-body { max-height: calc(100vh - 190px); overflow: auto; }
 .dialog-title { margin: 0; font-size: var(--font-size-lg); }
 .dialog-description { margin: var(--space-1) 0 0; color: var(--color-text-muted); }
 .dialog-body { margin-top: var(--space-5); }

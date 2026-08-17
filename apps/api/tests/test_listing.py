@@ -135,6 +135,35 @@ def test_listing_preview_and_idempotent_submit(tmp_path: Path) -> None:
     )
 
 
+def test_background_submit_returns_before_gateway_finishes(tmp_path: Path) -> None:
+    path = tmp_path / "listing-background.db"
+    repository, assetid = _seed(path)
+    started = Event()
+    release = Event()
+
+    class BlockingGateway:
+        def submit(self, _decision: dict) -> ListingGatewayResult:
+            started.set()
+            assert release.wait(2)
+            return ListingGatewayResult(True, True, None, None)
+
+    service = ListingService(repository, repository, BlockingGateway())
+    preview = service.create_preview((ListingSelection("steam", 730, "2", assetid),))
+
+    request = service.submit_background(preview["id"], "background-key")
+    assert request["status"] == "submitting"
+    assert started.wait(2)
+    live = repository.get_request(request["id"])
+    assert live is not None
+    assert live["items"][0]["status"] == "submitting"
+
+    release.set()
+    service.close()
+    completed = repository.get_request(request["id"])
+    assert completed is not None
+    assert completed["items"][0]["status"] == "pending_confirmation"
+
+
 def test_interrupted_submitting_item_is_available_for_reconciliation(tmp_path: Path) -> None:
     path = tmp_path / "listing-interrupted.db"
     repository, assetid = _seed(path)

@@ -69,6 +69,9 @@ def create_listing_router(service: ListingService, reconciler=None) -> APIRouter
     def submit(request: SubmitRequest) -> dict:
         if not request.confirmed:
             raise ValueError("explicit listing confirmation is required")
+        submit_background = getattr(service, "submit_background", None)
+        if submit_background is not None:
+            return submit_background(request.preview_id, request.idempotency_key, request.prices)
         return service.submit(request.preview_id, request.idempotency_key, request.prices)
 
     @router.patch("/listing-previews/{preview_id}")

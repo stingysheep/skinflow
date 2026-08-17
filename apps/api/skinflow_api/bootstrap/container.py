@@ -51,6 +51,7 @@ class Container:
     preferences_store: PreferencesStore
 
     def close(self) -> None:
+        self.listing_service.close()
         self.youpin_browser.close()
         self.preferences_store.close()
 

@@ -22,6 +22,6 @@ it('keeps a serial listing submission alive beyond the default request timeout',
   expect(postJson).toHaveBeenCalledWith(
     '/api/listing-requests',
     expect.objectContaining({ preview_id: 'preview-1', confirmed: true }),
-    1_200_000,
+    30_000,
   )
 })
