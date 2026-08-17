@@ -26,6 +26,9 @@ class ListingReconciliationStore(Protocol):
         self, item_id: str, sale_fill_id: str, sold_at: int, receive_total: int
     ) -> None: ...
     def mark_cancelled(self, item_id: str, checked_at: int) -> None: ...
+    def mark_pending_confirmation(
+        self, item_id: str, checked_at: int, steam_listing_id: str | None = None
+    ) -> None: ...
     def mark_active(
         self, item_id: str, checked_at: int, steam_listing_id: str | None = None
     ) -> None: ...
@@ -135,6 +138,8 @@ class ListingReconciliationService:
                     continue
                 self._store.mark_cancelled(item["id"], now)
                 summary["cancelled"] += 1
+            elif status.status == "pending_confirmation":
+                self._store.mark_pending_confirmation(item["id"], now, status.listing_id)
             elif status.status == "active":
                 self._store.mark_active(item["id"], now, status.listing_id)
             else:

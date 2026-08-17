@@ -642,6 +642,24 @@ class SqliteListingRepository:
             )
             self._refresh_request_status(item_id)
 
+    def mark_pending_confirmation(
+        self, item_id: str, checked_at: int, steam_listing_id: str | None = None
+    ) -> None:
+        with self._lock, self._connection:
+            self._connection.execute(
+                "UPDATE listing_item SET status='pending_confirmation',"
+                "steam_listing_id=COALESCE(?,steam_listing_id),last_checked_at=?,"
+                "reconcile_error=NULL WHERE id=? AND status IN "
+                "('submitting','pending_confirmation','pending_reconciliation','active')",
+                (steam_listing_id, checked_at, item_id),
+            )
+            self._connection.execute(
+                "UPDATE inventory_asset SET status='listing_pending' WHERE "
+                "(platform,appid,contextid,assetid)="
+                "(SELECT platform,appid,contextid,assetid FROM listing_item WHERE id=?)",
+                (item_id,),
+            )
+
     def mark_active(
         self, item_id: str, checked_at: int, steam_listing_id: str | None = None
     ) -> None:

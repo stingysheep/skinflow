@@ -431,6 +431,28 @@ def test_reconciliation_activation_persists_steam_id_and_inventory_status(
     assert inventory.list_assets()[0]["status"] == "listed"
 
 
+def test_pending_confirmation_repair_restores_inventory_pending_state(tmp_path: Path) -> None:
+    path = tmp_path / "listing-pending-repair.db"
+    repository, assetid = _seed(path)
+    service = ListingService(
+        repository,
+        repository,
+        Gateway(ListingGatewayResult(True, True, None, None)),
+    )
+    preview = service.create_preview((ListingSelection("steam", 730, "2", assetid),))
+    request = service.submit(preview["id"], "pending-repair-key")
+    item_id = request["items"][0]["id"]
+    repository.mark_active(item_id, 2_000, "listing-false-active")
+
+    repository.mark_pending_confirmation(item_id, 3_000, "listing-false-active")
+
+    current = repository.get_request(request["id"])
+    inventory = SqliteInventoryRepository(path)
+    assert current is not None
+    assert current["items"][0]["status"] == "pending_confirmation"
+    assert inventory.list_assets()[0]["status"] == "listing_pending"
+
+
 def test_reconciliation_backfills_steam_id_for_existing_active_item(tmp_path: Path) -> None:
     repository, assetid = _seed(tmp_path / "listing-active-id-backfill.db")
     service = ListingService(

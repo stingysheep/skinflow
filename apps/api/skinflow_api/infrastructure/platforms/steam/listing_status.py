@@ -19,6 +19,9 @@ HOVER_PATTERN = re.compile(
     r"\s*\d+,\s*'[^']+',\s*'(?P<assetid>[^']+)'"
 )
 LISTING_ROW_PATTERN = re.compile(r"^mylisting_(?P<listing_id>\d+)$")
+AWAITING_CONFIRMATION_PATTERN = re.compile(
+    r"RemoveListingDialog\.Show\([^;]*,\s*(?:true|1)\s*\)", re.IGNORECASE
+)
 MARKET_DATE_PATTERN = re.compile(
     r"(?:(?P<year>\d{4})\s*年\s*)?"
     r"(?P<month>\d{1,2})\s*月\s*(?P<day>\d{1,2})\s*日"
@@ -94,6 +97,7 @@ class _MarketRow:
     row_id: str
     text: list[str] = field(default_factory=list)
     price_text: list[str] = field(default_factory=list)
+    awaiting_confirmation: bool = False
 
 
 class _MarketRowsParser(HTMLParser):
@@ -113,6 +117,11 @@ class _MarketRowsParser(HTMLParser):
                 self._current = _MarketRow(str(attributes.get("id") or ""))
                 self._row_div_depth = 1
             return
+        if any(
+            AWAITING_CONFIRMATION_PATTERN.search(str(value or ""))
+            for value in attributes.values()
+        ):
+            self._current.awaiting_confirmation = True
         if tag == "div":
             self._row_div_depth += 1
 
@@ -154,7 +163,9 @@ def _collect_statuses(
         if not keys:
             continue
         observed.update(keys)
-        status = "active" if source == "active" else _history_status(row)
+        status = (
+            "pending_confirmation" if row.awaiting_confirmation else "active"
+        ) if source == "active" else _history_status(row)
         if status is None:
             continue
         identity = listing_id or assetid

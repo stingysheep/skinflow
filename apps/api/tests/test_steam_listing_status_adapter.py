@@ -20,6 +20,15 @@ CreateItemHoverFromContainer(
   g_rgAssets, 'mylisting_12345_name', 730, '2', 'asset-1', 1
 );
 """
+PENDING_HTML = """
+<div class="market_listing_row market_recent_listing_row" id="mylisting_12345">
+  <span class="market_listing_price">¥ 17.59</span>
+  <span class="market_listing_item_name">格洛克18型</span>
+  <a href="javascript:RemoveListingDialog.Show('mylisting', '12345', {}, true)">
+    取消
+  </a>
+</div>
+"""
 SOLD_HTML = """
 <div class="market_listing_row market_recent_listing_row"
      id="history_row_100_101">
@@ -88,6 +97,21 @@ def test_status_adapter_maps_active_listing_to_listing_and_asset_ids() -> None:
 
     assert statuses["12345"].status == "active"
     assert statuses["asset-1"].status == "active"
+
+
+def test_status_adapter_keeps_awaiting_confirmation_out_of_active_listings() -> None:
+    adapter = SteamListingStatusAdapter(
+        session(),
+        Client(
+            active={"success": True, "results_html": PENDING_HTML, "hovers": ACTIVE_HOVERS},
+            history={"success": True, "results_html": "", "hovers": ""},
+        ),
+    )
+
+    statuses = adapter.statuses(("12345", "asset-1"))
+
+    assert statuses["12345"].status == "pending_confirmation"
+    assert statuses["asset-1"].status == "pending_confirmation"
 
 
 def test_status_adapter_reads_sold_asset_and_seller_proceeds_from_history() -> None:

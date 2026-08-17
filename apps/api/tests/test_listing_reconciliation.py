@@ -32,6 +32,10 @@ class Store:
     def mark_cancelled(self, item_id, checked_at):
         self.items[0]["status"] = "cancelled"
 
+    def mark_pending_confirmation(self, item_id, checked_at, steam_listing_id):
+        self.items[0]["status"] = "pending_confirmation"
+        self.items[0]["steam_listing_id"] = steam_listing_id
+
     def mark_active(self, item_id, checked_at, steam_listing_id):
         self.items[0]["status"] = "active"
         self.items[0]["steam_listing_id"] = steam_listing_id
@@ -155,6 +159,23 @@ def test_reconciliation_includes_pending_confirmation_items():
 
     assert summary["checked"] == 1
     assert store.items[0]["status"] == "active"
+
+
+def test_reconciliation_demotes_false_active_row_to_pending_confirmation():
+    store = Store()
+
+    class PendingStatusPort:
+        def statuses(self, listing_ids):
+            return {
+                listing_ids[0]: SteamListingStatus(
+                    listing_ids[0], "pending_confirmation"
+                )
+            }
+
+    summary = ListingReconciliationService(store, PendingStatusPort(), Ledger()).reconcile()
+
+    assert summary["checked"] == 1
+    assert store.items[0]["status"] == "pending_confirmation"
 
 
 def test_missing_market_row_does_not_cancel_mobile_confirmation():
