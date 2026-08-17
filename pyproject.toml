@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "skinflow-workspace"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local CS2 semi-automatic trading workspace"
 requires-python = ">=3.13,<3.14"
 dependencies = [
@@ -22,6 +22,7 @@ dev = [
   "pytest-cov>=6.2,<7",
   "ruff>=0.12,<1",
 ]
+release = ["pyinstaller>=6.0,<7"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["apps/api/skinflow_api", "apps/desktop/skinflow_desktop"]

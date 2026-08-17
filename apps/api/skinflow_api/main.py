@@ -1,3 +1,4 @@
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -60,8 +61,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
+def _web_dist_path() -> Path:
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if bundle_root:
+        return Path(bundle_root) / "apps" / "web" / "dist"
+    return Path(__file__).resolve().parents[2] / "web" / "dist"
+
+
 def _mount_web(app: FastAPI, settings: Settings) -> None:
-    web_dist = Path(__file__).resolve().parents[2] / "web" / "dist"
+    web_dist = _web_dist_path()
     if not settings.serve_web or not (web_dist / "index.html").exists():
         return
     assets = web_dist / "assets"

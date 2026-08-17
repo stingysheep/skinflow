@@ -87,6 +87,23 @@ npm run build
 
 The desktop shell starts a loopback-only API server and opens a WebView2 window. It uses a fresh local startup token for each launch, so Vite and a separate Uvicorn process are not needed in this mode.
 
+## 下载即用的 Windows 便携包 / Portable Windows Package
+
+从 [Releases](../../releases) 下载 `Skinflow-vX.Y.Z-windows-x64.zip`，解压到任意本地文件夹后运行 `Skinflow.exe`。无需安装 Python、Node.js 或 npm，但仍需要 Windows 和 Microsoft Edge WebView2 Runtime。
+
+Download `Skinflow-vX.Y.Z-windows-x64.zip` from [Releases](../../releases), extract it to any local folder, and run `Skinflow.exe`. Python, Node.js, and npm are not required, but Windows and Microsoft Edge WebView2 Runtime are still required.
+
+便携包不包含数据库、日志、`.env`、缓存或 Steam 会话。首次运行后会在可执行文件旁创建本地 `data/`；请将该目录保留在本机，切勿上传或分享。
+
+The portable package contains no database, logs, `.env`, cache, or Steam session. Its first run creates a local `data/` directory beside the executable; keep it local and never upload or share it.
+
+从源码构建便携包 / Build a portable package from source:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[desktop,release]"
+powershell -ExecutionPolicy Bypass -File apps/desktop/tools/build_portable.ps1 -OutputDirectory C:\tmp\skinflow-release
+```
+
 ## 典型流程 / Typical Workflow
 
 1. 使用 **扫描 / Scan** 观察公开市场机会。<br>Use **Scan** to inspect public market opportunities.

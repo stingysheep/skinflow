@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "Skinflow"
-    api_version: str = "0.1.0"
+    api_version: str = "0.1.1"
     environment: str = "development"
     database_path: str = "data/skinflow.db"
     csqaq_api_token: str = ""

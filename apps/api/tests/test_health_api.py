@@ -33,3 +33,11 @@ def test_inventory_and_platform_health_are_available(tmp_path) -> None:
     assert inventory.status_code == 200
     assert inventory.json()["status"] == "session_required"
     assert platform.status_code == 200
+
+
+def test_frozen_bundle_uses_included_web_dist(monkeypatch, tmp_path) -> None:
+    from skinflow_api import main
+
+    monkeypatch.setattr(main.sys, "_MEIPASS", str(tmp_path), raising=False)
+
+    assert main._web_dist_path() == tmp_path / "apps" / "web" / "dist"
